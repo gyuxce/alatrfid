@@ -8,6 +8,7 @@ import 'audio_stub.dart' if (dart.library.js) 'audio_web.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'login_screen.dart';
 
 // ==========================================
 // CONFIGURATION: SETUP YOUR SUPABASE DETAILS
@@ -56,11 +57,44 @@ class CashierApp extends StatelessWidget {
         colorScheme: const ColorScheme.light(
           primary: Color(0xFF3B82F6),
           secondary: Color(0xFF10B981),
-          surface: Colors.white,
         ),
       ),
-      home: CashierHomePage(isSupabaseConfigured: isSupabaseConfigured),
+      home: AuthWrapper(isSupabaseConfigured: isSupabaseConfigured),
     );
+  }
+}
+
+class AuthWrapper extends StatefulWidget {
+  final bool isSupabaseConfigured;
+  const AuthWrapper({super.key, required this.isSupabaseConfigured});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isSupabaseConfigured) {
+      Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isSupabaseConfigured) {
+      return LoginScreen(isSupabaseConfigured: widget.isSupabaseConfigured);
+    }
+    
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session != null) {
+      return CashierHomePage(isSupabaseConfigured: widget.isSupabaseConfigured);
+    } else {
+      return LoginScreen(isSupabaseConfigured: widget.isSupabaseConfigured);
+    }
   }
 }
 
@@ -74,8 +108,9 @@ enum TransactionStatus {
 
 class CashierHomePage extends StatefulWidget {
   final bool isSupabaseConfigured;
+  final String? mockEmail;
 
-  const CashierHomePage({super.key, required this.isSupabaseConfigured});
+  const CashierHomePage({super.key, required this.isSupabaseConfigured, this.mockEmail});
 
   @override
   State<CashierHomePage> createState() => _CashierHomePageState();
@@ -141,15 +176,15 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
   }
 
   // POS System State (Phase 1)
-  final List<Map<String, dynamic>> _mockProducts = [
-    {'id': 1, 'name': 'Nasi Goreng Spesial', 'price': 25000, 'category': 'Makanan', 'icon': Icons.rice_bowl},
-    {'id': 2, 'name': 'Es Kelapa Muda', 'price': 15000, 'category': 'Minuman', 'icon': Icons.local_drink},
-    {'id': 3, 'name': 'Sate Ayam Madura', 'price': 30000, 'category': 'Makanan', 'icon': Icons.kebab_dining},
-    {'id': 4, 'name': 'Kopi Hitam', 'price': 10000, 'category': 'Minuman', 'icon': Icons.coffee},
-    {'id': 5, 'name': 'Tiket Bianglala', 'price': 35000, 'category': 'Wahana', 'icon': Icons.attractions},
-    {'id': 6, 'name': 'Gantungan Kunci', 'price': 15000, 'category': 'Souvenir', 'icon': Icons.vpn_key},
-    {'id': 7, 'name': 'Es Teh Manis', 'price': 5000, 'category': 'Minuman', 'icon': Icons.emoji_food_beverage},
-    {'id': 8, 'name': 'Mie Pedas', 'price': 20000, 'category': 'Makanan', 'icon': Icons.ramen_dining},
+  List<Map<String, dynamic>> _products = [
+    {'id': 1, 'name': 'Nasi Goreng Spesial', 'price': 25000, 'category': 'Makanan', 'icon_name': 'rice_bowl', 'icon': Icons.rice_bowl},
+    {'id': 2, 'name': 'Es Kelapa Muda', 'price': 15000, 'category': 'Minuman', 'icon_name': 'local_drink', 'icon': Icons.local_drink},
+    {'id': 3, 'name': 'Sate Ayam Madura', 'price': 30000, 'category': 'Makanan', 'icon_name': 'kebab_dining', 'icon': Icons.kebab_dining},
+    {'id': 4, 'name': 'Kopi Hitam', 'price': 10000, 'category': 'Minuman', 'icon_name': 'coffee', 'icon': Icons.coffee},
+    {'id': 5, 'name': 'Tiket Bianglala', 'price': 35000, 'category': 'Wahana', 'icon_name': 'attractions', 'icon': Icons.attractions},
+    {'id': 6, 'name': 'Gantungan Kunci', 'price': 15000, 'category': 'Souvenir', 'icon_name': 'vpn_key', 'icon': Icons.vpn_key},
+    {'id': 7, 'name': 'Es Teh Manis', 'price': 5000, 'category': 'Minuman', 'icon_name': 'emoji_food_beverage', 'icon': Icons.emoji_food_beverage},
+    {'id': 8, 'name': 'Mie Pedas', 'price': 20000, 'category': 'Makanan', 'icon_name': 'ramen_dining', 'icon': Icons.ramen_dining},
   ];
 
   Map<int, int> _cartItems = {}; // product_id -> quantity
@@ -178,7 +213,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
   void _updateCartTotal() {
     int sum = 0;
     _cartItems.forEach((id, qty) {
-      final product = _mockProducts.firstWhere((p) => p['id'] == id);
+      final product = _products.firstWhere((p) => p['id'] == id);
       sum += (product['price'] as int) * qty;
     });
     _cashierAmount = sum;
@@ -199,6 +234,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
   bool get _isCashierTab => (_isAdminMode && _currentTab == 1) || (!_isAdminMode && _currentTab == 0);
   bool get _isTopUpTab => (_isAdminMode && _currentTab == 2) || (!_isAdminMode && _currentTab == 1);
   bool get _isHistoryTab => (_isAdminMode && _currentTab == 3) || (!_isAdminMode && _currentTab == 2);
+  bool get _isMenuTab => (!_isAdminMode && _currentTab == 3);
 
   @override
   void initState() {
@@ -293,10 +329,16 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     
     try {
       final supabase = Supabase.instance.client;
-      final List<dynamic> response = await supabase
-          .from('merchants')
-          .select('id, nama_warung, nama_pemilik')
-          .order('nama_warung', ascending: true);
+      var query = supabase.from('merchants').select('id, nama_warung, nama_pemilik');
+      
+      if (!_isAdminMode) {
+        final userId = supabase.auth.currentUser?.id;
+        if (userId != null) {
+          query = query.eq('auth_user_id', userId);
+        }
+      }
+      
+      final List<dynamic> response = await query.order('nama_warung', ascending: true);
           
       setState(() {
         _merchantsList = List<Map<String, dynamic>>.from(response);
@@ -306,6 +348,8 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           }
         }
       });
+      
+      await _fetchProducts();
     } catch (e) {
       debugPrint('Error fetching merchants: $e');
       setState(() {
@@ -314,6 +358,26 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
         ];
         _selectedMerchantId = 1;
       });
+    }
+  }
+
+  Future<void> _fetchProducts() async {
+    if (!widget.isSupabaseConfigured || _selectedMerchantId == null) return;
+    
+    try {
+      final supabase = Supabase.instance.client;
+      final List<dynamic> response = await supabase
+          .from('products')
+          .select()
+          .eq('merchant_id', _selectedMerchantId!)
+          .order('name', ascending: true);
+          
+      setState(() {
+        _products = List<Map<String, dynamic>>.from(response);
+      });
+    } catch (e) {
+      debugPrint('Error fetching products: $e');
+      // Keep using default _products fallback set earlier
     }
   }
 
@@ -845,95 +909,17 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     }
   }
 
-  // Security Access Management (PIN)
-  void _showPINDialog() {
-    final pinController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-          title: const Row(
-            children: [
-              Icon(Icons.lock_rounded, color: Color(0xFF3B82F6)),
-              SizedBox(width: 10),
-              Text('Mode Pengelola', style: TextStyle(color: Color(0xFF0F172A), fontSize: 18, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Masukkan PIN Keamanan Pusat:', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-              const SizedBox(height: 14),
-              TextField(
-                controller: pinController,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 2),
-                  ),
-                  counterText: '',
-                  hintText: 'Masukkan PIN',
-                ),
-                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 20, letterSpacing: 8, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Batal', style: TextStyle(color: Color(0xFF64748B))),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF3B82F6),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              onPressed: () {
-                if (pinController.text == '2026') {
-                  Navigator.pop(context);
-                  setState(() {
-                    _isAdminMode = true;
-                    _currentTab = 0; // Default to Admin Overview
-                    _resetTransaction();
-                  });
-                  _fetchAdminDashboardData();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Selamat Datang, Pengelola Pusat!'), backgroundColor: Colors.green),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('PIN Salah! Akses Ditolak.'), backgroundColor: Colors.redAccent),
-                  );
-                }
-              },
-              child: const Text('Masuk'),
-            ),
-          ],
+  // Security Access Management
+  Future<void> _logout() async {
+    if (widget.isSupabaseConfigured) {
+      await Supabase.instance.client.auth.signOut();
+    } else {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => LoginScreen(isSupabaseConfigured: false)),
         );
-      },
-    );
-  }
-
-  void _exitAdminMode() {
-    setState(() {
-      _isAdminMode = false;
-      _currentTab = 0; // Default to Cashier Belanja
-      _resetTransaction();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Keluar dari Mode Pengelola.'), backgroundColor: Colors.blueGrey),
-    );
+      }
+    }
   }
 
   // Generate real PDF receipt and open print/save dialog
@@ -1116,6 +1102,31 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
   }
 
   // UI Build methods
+  Widget _buildMainContent(bool isDesktop) {
+    if (_isOverviewTab) {
+      return _buildAdminOverviewView();
+    }
+    if (_isHistoryTab) {
+      return _isAdminMode ? _buildGlobalHistoryView() : _buildDashboardView();
+    }
+    if (_isMenuTab) {
+      return _buildMenuManager();
+    }
+    if (_isCashierTab) {
+      if (isDesktop) {
+        return _buildProductGrid();
+      } else {
+        return Column(
+          children: [
+            Expanded(flex: 3, child: _buildProductGrid()),
+            const Divider(height: 1),
+            Expanded(flex: 2, child: _buildCartSidebar()),
+          ],
+        );
+      }
+    }
+    return _buildDigitalKeypad();
+  }
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
@@ -1144,7 +1155,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                       // Active dropdown for merchants in cashier mode
                       _buildMerchantSelector(),
                       
-                      if (_isHistoryTab || _isOverviewTab || _isCashierTab) 
+                      if (_isHistoryTab || _isOverviewTab || _isCashierTab || _isMenuTab) 
                           const SizedBox.shrink() 
                       else ...[
                           _buildLEDAmountDisplay(),
@@ -1154,21 +1165,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                       ],
                       
                       Expanded(
-                        child: _isOverviewTab
-                            ? _buildAdminOverviewView()
-                            : (_isHistoryTab 
-                                ? (_isAdminMode ? _buildGlobalHistoryView() : _buildDashboardView()) 
-                                : (_isCashierTab 
-                                    ? (isDesktop 
-                                        ? _buildProductGrid() 
-                                        : Column(
-                                            children: [
-                                              Expanded(flex: 3, child: _buildProductGrid()),
-                                              const Divider(height: 1),
-                                              Expanded(flex: 2, child: _buildCartSidebar()),
-                                            ],
-                                          ))
-                                    : _buildDigitalKeypad())),
+                        child: _buildMainContent(isDesktop),
                       ),
                     ],
                   ),
@@ -1178,7 +1175,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           ),
           
           // Right POS Terminal Column (Payment Status & NFC wireless animations - Desktop only)
-          if (isDesktop && !_isOverviewTab && !_isHistoryTab)
+          if (isDesktop && !_isOverviewTab && !_isHistoryTab && !_isMenuTab)
             Expanded(
               flex: 5,
               child: Container(
@@ -1274,40 +1271,47 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
             _buildSidebarNavItem(1, Icons.add_card_rounded, 'Top-Up Saldo', const Color(0xFFECFDF5), const Color(0xFF10B981)),
             const SizedBox(height: 12),
             _buildSidebarNavItem(2, Icons.history_rounded, 'Riwayat Warung', const Color(0xFFFFF1F2), const Color(0xFFF43F5E)),
+            const SizedBox(height: 12),
+            _buildSidebarNavItem(3, Icons.restaurant_menu_rounded, 'Kelola Menu', const Color(0xFFFFF7ED), const Color(0xFFF97316)),
           ],
           
           const Spacer(),
 
           // Admin Access Toggle
-          InkWell(
-            onTap: _isAdminMode ? _exitAdminMode : _showPINDialog,
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-              decoration: BoxDecoration(
-                color: _isAdminMode ? const Color(0xFFFFF1F2) : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: _isAdminMode ? const Color(0xFFFECDD3) : const Color(0xFFE2E8F0),
+          const SizedBox(height: 16),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _logout,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF1F2),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFFECDD3),
+                    width: 1,
+                  ),
                 ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _isAdminMode ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
-                    color: _isAdminMode ? const Color(0xFFF43F5E) : const Color(0xFF64748B),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    _isAdminMode ? 'Keluar Admin' : 'Masuk Admin',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: _isAdminMode ? const Color(0xFFF43F5E) : const Color(0xFF0F172A),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.logout_rounded,
+                      color: Color(0xFFF43F5E),
+                      size: 20,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Keluar (Logout)',
+                      style: TextStyle(
+                        color: Color(0xFFF43F5E),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1442,13 +1446,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
             // Mode Toggle Icon for Mobile
             if (MediaQuery.of(context).size.width < 900)
               IconButton(
-                icon: Icon(
-                  _isAdminMode ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
-                  color: _isAdminMode ? const Color(0xFFF43F5E) : const Color(0xFF64748B),
-                  size: 24,
-                ),
-                onPressed: _isAdminMode ? _exitAdminMode : _showPINDialog,
-                tooltip: _isAdminMode ? 'Keluar Admin' : 'Masuk Admin',
+                icon: const Icon(Icons.logout_rounded, color: Color(0xFFF43F5E)),
+                onPressed: _logout,
+                tooltip: 'Logout',
               ),
             if ((_isCashierTab && _cashierAmount > 0) || (_isTopUpTab && _topUpAmount > 0))
               IconButton(
@@ -1701,11 +1701,173 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     );
   }
 
+  // Menu Manager for Cashiers
+  Widget _buildMenuManager() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Kelola Menu Warung',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showAddProductDialog(),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Tambah Menu'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: _products.isEmpty
+                ? const Center(child: Text('Belum ada menu. Silakan tambah menu pertama Anda.'))
+                : ListView.separated(
+                    itemCount: _products.length,
+                    separatorBuilder: (context, index) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final product = _products[index];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: const Color(0xFFF1F5F9),
+                          child: Icon(product['icon'] as IconData? ?? Icons.restaurant_rounded, color: const Color(0xFF64748B)),
+                        ),
+                        title: Text(product['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text('${product['category']} • Rp ${product['price']}'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit_rounded, color: Color(0xFF3B82F6)),
+                              onPressed: () => _showAddProductDialog(productToEdit: product),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFF43F5E)),
+                              onPressed: () => _deleteProduct(product['id']),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteProduct(dynamic productId) async {
+    if (!widget.isSupabaseConfigured) {
+      setState(() {
+        _products.removeWhere((p) => p['id'] == productId);
+      });
+      return;
+    }
+    try {
+      await Supabase.instance.client.from('products').delete().eq('id', productId);
+      await _fetchProducts();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Menu berhasil dihapus.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menghapus: $e')));
+    }
+  }
+
+  void _showAddProductDialog({Map<String, dynamic>? productToEdit}) {
+    final nameCtrl = TextEditingController(text: productToEdit?['name']);
+    final priceCtrl = TextEditingController(text: productToEdit?['price']?.toString());
+    final catCtrl = TextEditingController(text: productToEdit?['category'] ?? 'Makanan');
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: Text(productToEdit == null ? 'Tambah Menu Baru' : 'Edit Menu'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nama Menu')),
+                  const SizedBox(height: 12),
+                  TextField(controller: priceCtrl, decoration: const InputDecoration(labelText: 'Harga (Rp)'), keyboardType: TextInputType.number),
+                  const SizedBox(height: 12),
+                  TextField(controller: catCtrl, decoration: const InputDecoration(labelText: 'Kategori (Makanan/Minuman)')),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
+                ElevatedButton(
+                  onPressed: isLoading ? null : () async {
+                    if (nameCtrl.text.isEmpty || priceCtrl.text.isEmpty) return;
+                    setModalState(() => isLoading = true);
+                    
+                    final newProduct = {
+                      'merchant_id': _selectedMerchantId,
+                      'name': nameCtrl.text,
+                      'price': int.tryParse(priceCtrl.text) ?? 0,
+                      'category': catCtrl.text,
+                    };
+
+                    if (!widget.isSupabaseConfigured) {
+                       setState(() {
+                         if (productToEdit == null) {
+                           newProduct['id'] = DateTime.now().millisecondsSinceEpoch;
+                           newProduct['icon'] = Icons.fastfood;
+                           _products.add(newProduct);
+                         } else {
+                           final index = _products.indexWhere((p) => p['id'] == productToEdit['id']);
+                           if (index != -1) {
+                             _products[index] = {..._products[index], ...newProduct};
+                           }
+                         }
+                       });
+                       Navigator.pop(context);
+                       return;
+                    }
+
+                    try {
+                      if (productToEdit == null) {
+                        await Supabase.instance.client.from('products').insert(newProduct);
+                      } else {
+                        await Supabase.instance.client.from('products').update(newProduct).eq('id', productToEdit['id']);
+                      }
+                      await _fetchProducts();
+                      if (mounted) {
+                         Navigator.pop(context);
+                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tersimpan!')));
+                      }
+                    } catch (e) {
+                      setModalState(() => isLoading = false);
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                    }
+                  },
+                  child: isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Simpan'),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
   // POS: Product Grid View
   Widget _buildProductGrid() {
     final filteredProducts = _posCategoryFilter == 'Semua' 
-        ? _mockProducts 
-        : _mockProducts.where((p) => p['category'] == _posCategoryFilter).toList();
+        ? _products 
+        : _products.where((p) => p['category'] == _posCategoryFilter).toList();
 
     return Column(
       children: [
@@ -1844,7 +2006,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                   itemBuilder: (context, index) {
                     final int productId = _cartItems.keys.elementAt(index);
                     final int qty = _cartItems[productId]!;
-                    final product = _mockProducts.firstWhere((p) => p['id'] == productId);
+                    final product = _products.firstWhere((p) => p['id'] == productId);
                     
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -3189,6 +3351,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               NavigationDestination(icon: Icon(Icons.point_of_sale_rounded), label: 'Kasir'),
               NavigationDestination(icon: Icon(Icons.add_card_rounded), label: 'Top-Up'),
               NavigationDestination(icon: Icon(Icons.analytics_rounded), label: 'Riwayat'),
+              NavigationDestination(icon: Icon(Icons.restaurant_menu_rounded), label: 'Menu'),
             ],
     );
   }
