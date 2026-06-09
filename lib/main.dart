@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nfc_manager/nfc_manager.dart';
+import 'dart:js' as js; // Used for cashier synth beep sound on Web
 
 // ==========================================
 // CONFIGURATION: SETUP YOUR SUPABASE DETAILS
@@ -46,13 +47,14 @@ class CashierApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0B0F19), // Deep Obsidian Dark
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF6366F1), // Electric Indigo
-          secondary: Color(0xFFEC4899), // Neon Pink
-          surface: Color(0xFF151D30), // Sleek Dark Blue/Grey
-          background: Color(0xFF0B0F19),
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC), // Apple Soft Grey Canvas
+        fontFamily: '.SF Pro Text', // Native Apple look-alike fallback
+        colorScheme: const ColorScheme.light(
+          primary: Color(0xFF3B82F6), // iOS Blue
+          secondary: Color(0xFF10B981), // Gojek Emerald Green
+          surface: Colors.white,
+          background: const Color(0xFFF8FAFC),
         ),
       ),
       home: CashierHomePage(isSupabaseConfigured: isSupabaseConfigured),
@@ -82,6 +84,10 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
   bool _isAdminMode = false;
   bool _isInitialized = false;
   int _currentTab = 0; // Index mapping adapts depending on _isAdminMode
+  bool _showSimulator = kIsWeb; // Toggle simulator panel visibility on web
+  bool _isPrinting = false; // Simulation of Bluetooth printer loading state
+  bool _isExporting = false; // Simulation of Excel/PDF export loading state
+  String _activeTimeFilter = 'Hari Ini'; // Stats tab filter option
 
   // Global State Machine variables
   TransactionStatus _currentStatus = TransactionStatus.waitingForInput;
@@ -164,6 +170,32 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     super.dispose();
   }
 
+  // Play a POS scanner beep sound (evaluates custom JS Web Audio API on Web, click haptic on mobile)
+  void _playBeepSound() {
+    if (kIsWeb) {
+      try {
+        js.context.callMethod('eval', [
+          """
+          var ctx = new (window.AudioContext || window.webkitAudioContext)();
+          var osc = ctx.createOscillator();
+          var gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, ctx.currentTime); // High pitch POS scanner bip
+          gain.gain.setValueAtTime(0.08, ctx.currentTime);
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.12); // Short beep 120ms
+          """
+        ]);
+      } catch (e) {
+        debugPrint('Web Audio API error: $e');
+      }
+    } else {
+      HapticFeedback.heavyImpact();
+    }
+  }
+
   // Formatting utility for Rupiah
   String _formatCurrency(int value) {
     String strVal = value.toString();
@@ -196,9 +228,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     if (!widget.isSupabaseConfigured) {
       setState(() {
         _merchantsList = [
-          {'id': 1, 'nama_warung': 'Warung Soto Seger', 'nama_pemilik': 'Pak Joko'},
-          {'id': 2, 'nama_warung': 'Toko Souvenir Candi', 'nama_pemilik': 'Bu Sri'},
-          {'id': 3, 'nama_warung': 'Kedai Kelapa Muda', 'nama_pemilik': 'Kang Asep'},
+          {'id': 1, 'nama_warung': 'Warung Kelapa Muda Pak Agus', 'nama_pemilik': 'Pak Agus'},
+          {'id': 2, 'nama_warung': 'Toko Souvenir Candi Prambanan', 'nama_pemilik': 'Bu Sri'},
+          {'id': 3, 'nama_warung': 'Kedai Kopi Kuliner Kuta', 'nama_pemilik': 'Bli Made'},
         ];
         _selectedMerchantId = 1;
       });
@@ -242,16 +274,16 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     final int activeMerchant = _selectedMerchantId ?? 1;
 
     if (!widget.isSupabaseConfigured) {
-      // Mock Dashboard values
-      await Future.delayed(const Duration(milliseconds: 400));
+      await Future.delayed(const Duration(milliseconds: 300));
       setState(() {
-        _totalEarnings = 275000;
-        _totalTransactionsCount = 4;
+        _totalEarnings = 710000;
+        _totalTransactionsCount = 5;
         _recentTransactions = [
-          {'id': 1, 'nominal': 125000, 'created_at': DateTime.now().toIso8601String(), 'users': {'nama': 'Budi Wisatawan'}},
-          {'id': 2, 'nominal': 50000, 'created_at': DateTime.now().subtract(const Duration(minutes: 10)).toIso8601String(), 'users': {'nama': 'Budi Wisatawan'}},
-          {'id': 3, 'nominal': 15000, 'created_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(), 'users': {'nama': 'Andi Pengunjung'}},
-          {'id': 4, 'nominal': 85000, 'created_at': DateTime.now().subtract(const Duration(hours: 3)).toIso8601String(), 'users': {'nama': 'Siti Traveler'}},
+          {'id': 1, 'nominal': 5000, 'created_at': DateTime.now().toIso8601String(), 'users': {'nama': 'Budi Wisatawan'}},
+          {'id': 2, 'nominal': 25000, 'created_at': DateTime.now().subtract(const Duration(minutes: 5)).toIso8601String(), 'users': {'nama': 'Siti Travela'}},
+          {'id': 3, 'nominal': 80000, 'created_at': DateTime.now().subtract(const Duration(minutes: 15)).toIso8601String(), 'users': {'nama': 'Andi Explorer'}},
+          {'id': 4, 'nominal': 50000, 'created_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(), 'users': {'nama': 'Dewi Journey'}},
+          {'id': 5, 'nominal': 200000, 'created_at': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(), 'users': {'nama': 'Top-Up Saldo'}},
         ];
         _isLoadingDashboard = false;
       });
@@ -304,22 +336,22 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     });
 
     if (!widget.isSupabaseConfigured) {
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 300));
       setState(() {
-        _totalSpendingsSum = 385000;
-        _totalTopUpsSum = 785000; // Total money in system = current balances (~400k) + spendings (~385k)
+        _totalSpendingsSum = 710000;
+        _totalTopUpsSum = 970800; // Total money in system = current balances (~260k) + spendings (~710k)
         
         _allTransactionsGlobal = [
-          {'id': 1, 'nominal': 15000, 'created_at': DateTime.now().toIso8601String(), 'users': {'nama': 'Andi Pengunjung'}, 'merchants': {'nama_warung': 'Warung Soto Seger'}},
-          {'id': 2, 'nominal': 50000, 'created_at': DateTime.now().subtract(const Duration(minutes: 5)).toIso8601String(), 'users': {'nama': 'Budi Wisatawan'}, 'merchants': {'nama_warung': 'Toko Souvenir Candi'}},
-          {'id': 3, 'nominal': 120000, 'created_at': DateTime.now().subtract(const Duration(minutes: 15)).toIso8601String(), 'users': {'nama': 'Siti Traveler'}, 'merchants': {'nama_warung': 'Kedai Kelapa Muda'}},
-          {'id': 4, 'nominal': 200000, 'created_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(), 'users': {'nama': 'Budi Wisatawan'}, 'merchants': {'nama_warung': 'Warung Soto Seger'}},
+          {'id': 1, 'nominal': 5000, 'created_at': DateTime.now().toIso8601String(), 'users': {'nama': 'Budi Wisatawan'}, 'merchants': {'nama_warung': 'Warung Kelapa Muda Pak Agus'}},
+          {'id': 2, 'nominal': 25000, 'created_at': DateTime.now().subtract(const Duration(minutes: 15)).toIso8601String(), 'users': {'nama': 'Siti Travela'}, 'merchants': {'nama_warung': 'Toko Souvenir Candi Prambanan'}},
+          {'id': 3, 'nominal': 80000, 'created_at': DateTime.now().subtract(const Duration(minutes: 30)).toIso8601String(), 'users': {'nama': 'Andi Explorer'}, 'merchants': {'nama_warung': 'Kedai Kopi Kuliner Kuta'}},
+          {'id': 4, 'nominal': 50000, 'created_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(), 'users': {'nama': 'Dewi Journey'}, 'merchants': {'nama_warung': 'Warung Kelapa Muda Pak Agus'}},
         ];
         
         _bestSellingMerchants = [
-          {'nama_warung': 'Warung Soto Seger', 'total_omzet': 215000},
-          {'nama_warung': 'Kedai Kelapa Muda', 'total_omzet': 120000},
-          {'nama_warung': 'Toko Souvenir Candi', 'total_omzet': 50000},
+          {'nama_warung': 'Warung Kelapa Muda Pak Agus', 'total_omzet': 710000},
+          {'nama_warung': 'Kedai Kopi Kuliner Kuta', 'total_omzet': 120000},
+          {'nama_warung': 'Toko Souvenir Candi Prambanan', 'total_omzet': 80000},
         ];
         _isLoadingAdminDashboard = false;
       });
@@ -347,7 +379,6 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
       int sumSpendings = 0;
       Map<String, int> merchantSales = {};
       
-      // Initialize map with all registered merchants to show 0 if no sales
       for (var m in _merchantsList) {
         String name = m['nama_warung'] ?? 'Warung';
         merchantSales[name] = 0;
@@ -361,7 +392,6 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
         merchantSales[merchantName] = (merchantSales[merchantName] ?? 0) + nominal;
       }
 
-      // Format ranked merchants
       final rankedMerchantsList = merchantSales.entries
           .map((e) => {'nama_warung': e.key, 'total_omzet': e.value})
           .toList()
@@ -387,7 +417,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     if (_currentStatus != TransactionStatus.waitingForInput &&
         _currentStatus != TransactionStatus.success &&
         _currentStatus != TransactionStatus.failed) {
-      return; // Lock input during execution
+      return; 
     }
 
     if (_currentStatus == TransactionStatus.success || _currentStatus == TransactionStatus.failed) {
@@ -494,7 +524,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     });
 
     if (!widget.isSupabaseConfigured) {
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 1));
       if (uid == '00:00:00:00') {
         setState(() {
           _currentStatus = TransactionStatus.failed;
@@ -512,6 +542,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
         return;
       }
       
+      _playBeepSound();
       setState(() {
         touristName = 'Budi Wisatawan';
         remainingSaldo = mockUserSaldo - nominal;
@@ -567,6 +598,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
         'created_at': DateTime.now().toIso8601String(),
       });
 
+      _playBeepSound();
       setState(() {
         touristName = name;
         remainingSaldo = newSaldo;
@@ -594,7 +626,8 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     });
 
     if (!widget.isSupabaseConfigured) {
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 1));
+      _playBeepSound();
       setState(() {
         touristName = 'Budi Wisatawan';
         loadedNewSaldo = 150000 + nominal;
@@ -625,6 +658,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
             .update({'saldo': newSaldo})
             .eq('id', userId);
 
+        _playBeepSound();
         setState(() {
           touristName = name;
           loadedNewSaldo = newSaldo;
@@ -642,6 +676,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           'created_at': DateTime.now().toIso8601String(),
         });
 
+        _playBeepSound();
         setState(() {
           touristName = newTouristName;
           loadedNewSaldo = nominal;
@@ -686,7 +721,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
       touristName = null;
     });
 
-    if (kIsWeb) return; // Uses visual card tap simulator in Chrome
+    if (kIsWeb) return; 
 
     bool isAvailable = await NfcManager.instance.isAvailable();
     if (!isAvailable) {
@@ -766,33 +801,37 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF151D30),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
           title: const Row(
             children: [
-              Icon(Icons.lock_rounded, color: Color(0xFF6366F1)),
+              Icon(Icons.lock_rounded, color: Color(0xFF3B82F6)),
               SizedBox(width: 10),
-              Text('Mode Pengelola', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              Text('Mode Pengelola', style: TextStyle(color: Color(0xFF0F172A), fontSize: 18, fontWeight: FontWeight.bold)),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Masukkan PIN Keamanan Pusat:', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 12),
+              const Text('Masukkan PIN Keamanan Pusat:', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+              const SizedBox(height: 14),
               TextField(
                 controller: pinController,
                 obscureText: true,
                 keyboardType: TextInputType.number,
                 maxLength: 4,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF6366F1))),
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 2),
+                  ),
                   counterText: '',
                   hintText: 'PIN (Default: 2026)',
                 ),
-                style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 8),
+                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 20, letterSpacing: 8, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -800,13 +839,14 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+              child: const Text('Batal', style: TextStyle(color: Color(0xFF64748B))),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
+                backgroundColor: const Color(0xFF3B82F6),
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
               onPressed: () {
                 if (pinController.text == '2026') {
@@ -845,6 +885,54 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     );
   }
 
+  // Simulate Bluetooth ticket printer
+  Future<void> _simulatePrintReceipt() async {
+    if (_isPrinting) return;
+    setState(() {
+      _isPrinting = true;
+    });
+    await Future.delayed(const Duration(milliseconds: 1500));
+    setState(() {
+      _isPrinting = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.print_rounded, color: Colors.white),
+            SizedBox(width: 8),
+            Text('Struk Kasir Berhasil Dicetak via Bluetooth Printer!'),
+          ],
+        ),
+        backgroundColor: Color(0xFF10B981),
+      ),
+    );
+  }
+
+  // Simulate Excel/PDF export
+  Future<void> _simulateExportReport() async {
+    if (_isExporting) return;
+    setState(() {
+      _isExporting = true;
+    });
+    await Future.delayed(const Duration(milliseconds: 1500));
+    setState(() {
+      _isExporting = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle_outline, color: Colors.white),
+            SizedBox(width: 8),
+            Text('Laporan Berhasil Diekspor ke Excel/PDF!'),
+          ],
+        ),
+        backgroundColor: Color(0xFF3B82F6),
+      ),
+    );
+  }
+
   // UI Build methods
   @override
   Widget build(BuildContext context) {
@@ -861,7 +949,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           Expanded(
             flex: isDesktop ? ( (_isOverviewTab || _isHistoryTab) ? 12 : 6 ) : 1,
             child: Container(
-              color: const Color(0xFF0E1322), // Deep Navy Slate
+              color: const Color(0xFFF8FAFC), // Apple Soft Grey Canvas
               child: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
@@ -869,7 +957,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _buildPOSHeader(),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       
                       // Active dropdown for merchants in cashier mode
                       _buildMerchantSelector(),
@@ -904,9 +992,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               flex: 5,
               child: Container(
                 decoration: const BoxDecoration(
-                  color: Color(0xFF080B13), // Deep Obsidian black
+                  color: Color(0xFFF1F5F9), // Light grey terminal console background
                   border: Border(
-                    left: BorderSide(color: Color(0xFF1E293B), width: 1.5),
+                    left: BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
                   ),
                 ),
                 child: SafeArea(
@@ -927,11 +1015,16 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     );
   }
 
-  // Sidebar navigation panel for desktop POS Terminal
+  // Sidebar navigation panel for desktop POS Terminal (Apple Style White Panel)
   Widget _buildDesktopNavSidebar() {
     return Container(
-      width: 240,
-      color: const Color(0xFF080B13), // Deep Obsidian black
+      width: 260,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          right: BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+        ),
+      ),
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -940,42 +1033,54 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
+                  color: const Color(0xFF3B82F6).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF818CF8), size: 20),
+                child: const Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF3B82F6), size: 24),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               const Text(
                 'E-WISATA PAY',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: 1.0),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            _isAdminMode ? '🛡️ MODE PUSAT (ADMIN)' : '🏪 MODE KASIR WARUNG',
-            style: TextStyle(fontSize: 10, color: _isAdminMode ? Colors.redAccent : Colors.greenAccent, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _isAdminMode ? const Color(0xFFFFF1F2) : const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              _isAdminMode ? '🛡️ MODE PUSAT (ADMIN)' : '🏪 MODE KASIR WARUNG',
+              style: TextStyle(
+                fontSize: 10, 
+                color: _isAdminMode ? const Color(0xFFF43F5E) : const Color(0xFF10B981), 
+                fontWeight: FontWeight.bold, 
+                letterSpacing: 0.5
+              ),
+            ),
           ),
           const SizedBox(height: 36),
           
-          // Menu Items
+          // Menu Items (Apple/Gojek grid menu style inside sidebar)
           if (_isAdminMode) ...[
-            _buildSidebarNavItem(0, Icons.analytics_rounded, 'Overview Pusat'),
+            _buildSidebarNavItem(0, Icons.analytics_rounded, 'Overview Pusat', const Color(0xFFEFF6FF), const Color(0xFF3B82F6)),
             const SizedBox(height: 12),
-            _buildSidebarNavItem(1, Icons.point_of_sale_rounded, 'Kasir Belanja'),
+            _buildSidebarNavItem(1, Icons.point_of_sale_rounded, 'Kasir Belanja', const Color(0xFFF5F3FF), const Color(0xFF8B5CF6)),
             const SizedBox(height: 12),
-            _buildSidebarNavItem(2, Icons.add_card_rounded, 'Top-Up Saldo'),
+            _buildSidebarNavItem(2, Icons.add_card_rounded, 'Top-Up Saldo', const Color(0xFFECFDF5), const Color(0xFF10B981)),
             const SizedBox(height: 12),
-            _buildSidebarNavItem(3, Icons.list_alt_rounded, 'Riwayat Global'),
+            _buildSidebarNavItem(3, Icons.list_alt_rounded, 'Riwayat Global', const Color(0xFFFFF1F2), const Color(0xFFF43F5E)),
           ] else ...[
-            _buildSidebarNavItem(0, Icons.point_of_sale_rounded, 'Kasir Belanja'),
+            _buildSidebarNavItem(0, Icons.point_of_sale_rounded, 'Kasir Belanja', const Color(0xFFF5F3FF), const Color(0xFF8B5CF6)),
             const SizedBox(height: 12),
-            _buildSidebarNavItem(1, Icons.add_card_rounded, 'Top-Up Saldo'),
+            _buildSidebarNavItem(1, Icons.add_card_rounded, 'Top-Up Saldo', const Color(0xFFECFDF5), const Color(0xFF10B981)),
             const SizedBox(height: 12),
-            _buildSidebarNavItem(2, Icons.history_rounded, 'Riwayat Warung'),
+            _buildSidebarNavItem(2, Icons.history_rounded, 'Riwayat Warung', const Color(0xFFFFF1F2), const Color(0xFFF43F5E)),
           ],
           
           const Spacer(),
@@ -983,30 +1088,30 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           // Admin Access Toggle
           InkWell(
             onTap: _isAdminMode ? _exitAdminMode : _showPINDialog,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
               decoration: BoxDecoration(
-                color: _isAdminMode ? Colors.redAccent.withOpacity(0.12) : const Color(0xFF1E293B).withOpacity(0.4),
-                borderRadius: BorderRadius.circular(12),
+                color: _isAdminMode ? const Color(0xFFFFF1F2) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: _isAdminMode ? Colors.redAccent.withOpacity(0.3) : const Color(0xFF1E293B),
+                  color: _isAdminMode ? const Color(0xFFFECDD3) : const Color(0xFFE2E8F0),
                 ),
               ),
               child: Row(
                 children: [
                   Icon(
                     _isAdminMode ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
-                    color: _isAdminMode ? Colors.redAccent : Colors.grey,
+                    color: _isAdminMode ? const Color(0xFFF43F5E) : const Color(0xFF64748B),
                     size: 18,
                   ),
                   const SizedBox(width: 10),
                   Text(
                     _isAdminMode ? 'Keluar Admin' : 'Masuk Admin',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: FontWeight.bold,
-                      color: _isAdminMode ? Colors.redAccent : Colors.white,
+                      color: _isAdminMode ? const Color(0xFFF43F5E) : const Color(0xFF0F172A),
                     ),
                   ),
                 ],
@@ -1026,9 +1131,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF151C2C),
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1E293B)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1039,14 +1144,14 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: widget.isSupabaseConfigured ? Colors.green : Colors.amber,
+                  color: widget.isSupabaseConfigured ? const Color(0xFF10B981) : Colors.amber,
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 8),
               Text(
                 widget.isSupabaseConfigured ? 'Database Online' : 'Sandbox Offline',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
               ),
             ],
           ),
@@ -1055,14 +1160,15 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
             widget.isSupabaseConfigured 
                 ? 'Sinkronisasi cloud aktif.' 
                 : 'Data hanya disimpan lokal.',
-            style: TextStyle(fontSize: 9, color: Colors.grey[400]),
+            style: const TextStyle(fontSize: 9, color: Color(0xFF64748B)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSidebarNavItem(int index, IconData icon, String label) {
+  // Apple style Nav Sidebar item with rounded shapes and pastel circle background for icon
+  Widget _buildSidebarNavItem(int index, IconData icon, String label, Color pastelBg, Color accentColor) {
     final bool isSelected = _currentTab == index;
     return InkWell(
       onTap: () {
@@ -1074,26 +1180,33 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           _fetchAdminDashboardData();
         }
       },
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF6366F1).withOpacity(0.15) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: isSelected 
-              ? Border.all(color: const Color(0xFF6366F1).withOpacity(0.4)) 
-              : Border.all(color: Colors.transparent),
+          color: isSelected ? const Color(0xFFF1F5F9) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? const Color(0xFFE2E8F0) : Colors.transparent,
+          ),
         ),
         child: Row(
           children: [
-            Icon(icon, color: isSelected ? const Color(0xFF818CF8) : Colors.grey, size: 20),
-            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: pastelBg,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: accentColor, size: 20),
+            ),
+            const SizedBox(width: 14),
             Text(
               label,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? Colors.white : Colors.grey[400],
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? const Color(0xFF0F172A) : const Color(0xFF64748B),
               ),
             ),
           ],
@@ -1105,23 +1218,29 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
   Widget _buildPOSHeader() {
     String titleText = '';
     if (_isOverviewTab) {
-      titleText = '📊 MONITORING PUSAT';
+      titleText = 'Monitoring Pusat';
     } else if (_isCashierTab) {
-      titleText = '🛒 TERMINAL KASIR BELANJA';
+      titleText = 'Kasir';
     } else if (_isTopUpTab) {
-      titleText = '💳 PENGISIAN SALDO WISATA';
+      titleText = 'Top-Up Saldo';
     } else if (_isHistoryTab) {
-      titleText = _isAdminMode ? '📋 RIWAYAT TRANSAKSI GLOBAL' : '📋 LAPORAN KASIR HARIAN';
+      titleText = 'Riwayat Transaksi';
     }
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Expanded(
-          child: Text(
-            titleText,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 1.1),
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                titleText,
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+              ),
+              if (_isOverviewTab)
+                const Text('Monitoring seluruh area wisata', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+            ],
           ),
         ),
         Row(
@@ -1132,15 +1251,15 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               IconButton(
                 icon: Icon(
                   _isAdminMode ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
-                  color: _isAdminMode ? Colors.redAccent : Colors.grey,
-                  size: 20,
+                  color: _isAdminMode ? const Color(0xFFF43F5E) : const Color(0xFF64748B),
+                  size: 24,
                 ),
                 onPressed: _isAdminMode ? _exitAdminMode : _showPINDialog,
                 tooltip: _isAdminMode ? 'Keluar Admin' : 'Masuk Admin',
               ),
             if ((_isCashierTab && _cashierAmount > 0) || (_isTopUpTab && _topUpAmount > 0))
               IconButton(
-                icon: const Icon(Icons.refresh_rounded, color: Colors.grey),
+                icon: const Icon(Icons.refresh_rounded, color: Color(0xFF64748B)),
                 onPressed: _clearAmount,
                 tooltip: 'Clear nominal',
               )
@@ -1150,50 +1269,92 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     );
   }
 
+  // Active dropdown for merchants in cashier mode (styled exactly like the mockup card)
   Widget _buildMerchantSelector() {
-    if (!_isCashierTab || _merchantsList.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    if (!_isCashierTab && !_isTopUpTab) return const SizedBox.shrink();
+    if (_merchantsList.isEmpty) return const SizedBox.shrink();
+    
+    final activeMerchant = _merchantsList.firstWhere((m) => m['id'] == _selectedMerchantId, orElse: () => _merchantsList[0]);
+    final String activeName = activeMerchant['nama_warung'] ?? 'Warung';
     
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF151C2C),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1E293B)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x050F172A), blurRadius: 10, offset: Offset(0, 4)),
+        ],
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<int>(
-          value: _selectedMerchantId,
-          dropdownColor: const Color(0xFF151C2C),
-          icon: const Icon(Icons.storefront_rounded, color: Color(0xFF818CF8)),
-          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-          onChanged: (int? newValue) {
-            setState(() {
-              _selectedMerchantId = newValue;
-            });
-            _fetchDashboardData();
-          },
-          items: _merchantsList.map<DropdownMenuItem<int>>((Map<String, dynamic> merchant) {
-            return DropdownMenuItem<int>(
-              value: merchant['id'] as int,
-              child: Text(merchant['nama_warung'] ?? 'Warung'),
-            );
-          }).toList(),
-        ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF3C7), // Yellow pastel circular bg
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.storefront_rounded, color: Colors.amber, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  activeName,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Pantai Kuta, Bali (Merchant Resmi)',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _selectedMerchantId,
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B)),
+              dropdownColor: Colors.white,
+              onChanged: (int? newValue) {
+                setState(() {
+                  _selectedMerchantId = newValue;
+                });
+                _fetchDashboardData();
+              },
+              items: _merchantsList.map<DropdownMenuItem<int>>((Map<String, dynamic> merchant) {
+                return DropdownMenuItem<int>(
+                  value: merchant['id'] as int,
+                  child: Text(
+                    merchant['nama_pemilik'] ?? 'Kasir',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF3B82F6)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }
 
+  // Apple-style Display Card with large Indigo typography
   Widget _buildLEDAmountDisplay() {
     int activeAmount = _isCashierTab ? _cashierAmount : _topUpAmount;
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF151C2C),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF1E293B), width: 1.5),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x050F172A), blurRadius: 15, offset: Offset(0, 6)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1202,29 +1363,22 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                _isCashierTab ? 'NOMINAL DEBIT BELANJA' : 'NOMINAL TOP-UP SALDO',
-                style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1.1),
+                _isCashierTab ? 'Nominal Debit Belanja' : 'Nominal Top-Up Saldo',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
               ),
               const Text(
                 'IDR',
-                style: TextStyle(fontSize: 10, color: Color(0xFF818CF8), fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 12, color: Color(0xFF3B82F6), fontWeight: FontWeight.w800),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              _formatCurrency(activeAmount),
-              style: TextStyle(
-                fontSize: 40,
-                fontWeight: FontWeight.w900,
-                color: activeAmount == 0 ? const Color(0xFF334155) : const Color(0xFF818CF8),
-                shadows: activeAmount == 0
-                    ? null
-                    : [Shadow(color: const Color(0xFF6366F1).withOpacity(0.4), blurRadius: 15)],
-              ),
+          const SizedBox(height: 12),
+          Text(
+            _formatCurrency(activeAmount),
+            style: const TextStyle(
+              fontSize: 38,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0F172A), // Pure Slate Dark Text
             ),
           ),
         ],
@@ -1232,6 +1386,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     );
   }
 
+  // Light blue buttons with rounded corners
   Widget _buildQuickAmountSelector() {
     final values = _isCashierTab ? [10000, 25000, 50000, 100000] : [20000, 50000, 100000, 200000];
     final isEnabled = _currentStatus == TransactionStatus.waitingForInput;
@@ -1246,23 +1401,23 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               onTap: isEnabled ? () => _addQuickAmount(val) : null,
               borderRadius: BorderRadius.circular(12),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: isEnabled 
-                      ? const Color(0xFF1E293B).withOpacity(0.4) 
+                      ? const Color(0xFFEFF6FF) 
                       : Colors.white.withOpacity(0.02),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isEnabled ? const Color(0xFF1E293B) : Colors.transparent,
+                    color: isEnabled ? const Color(0xFFBFDBFE) : Colors.transparent,
                   ),
                 ),
                 child: Text(
                   text,
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: isEnabled ? Colors.white : Colors.grey[600],
+                    fontWeight: FontWeight.w800,
+                    color: isEnabled ? const Color(0xFF2563EB) : Colors.grey[400],
                   ),
                 ),
               ),
@@ -1301,53 +1456,50 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
             }).toList(),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         _buildKeypadActionButton(),
       ],
     );
   }
 
+  // Large Blue Apple style Action button
   Widget _buildKeypadActionButton() {
     int activeAmount = _isCashierTab ? _cashierAmount : _topUpAmount;
     final bool canClick = activeAmount > 0 && _currentStatus == TransactionStatus.waitingForInput;
     
     return Container(
-      height: 52,
+      height: 56,
       width: double.infinity,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: canClick 
-            ? LinearGradient(
-                colors: _isCashierTab 
-                    ? [const Color(0xFF6366F1), const Color(0xFF8B5CF6)] 
-                    : [const Color(0xFF10B981), const Color(0xFF059669)],
-              ) 
+        borderRadius: BorderRadius.circular(18),
+        color: canClick ? const Color(0xFF3B82F6) : const Color(0xFFE2E8F0),
+        boxShadow: canClick
+            ? [BoxShadow(color: const Color(0xFF3B82F6).withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))]
             : null,
-        color: canClick ? null : const Color(0xFF151C2C),
       ),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         ),
         onPressed: canClick ? _startPaymentProcess : null,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              _isCashierTab ? Icons.nfc_rounded : Icons.add_card_rounded, 
-              color: canClick ? Colors.white : Colors.grey[600],
-              size: 20,
+              _isCashierTab ? Icons.check_box_rounded : Icons.account_balance_wallet_rounded, 
+              color: canClick ? Colors.white : const Color(0xFF94A3B8),
+              size: 22,
             ),
             const SizedBox(width: 10),
             Text(
-              _isCashierTab ? 'PROSES PEMBAYARAN' : 'PROSES TOP-UP SALDO',
+              _isCashierTab ? 'Proses Pembayaran' : 'Proses Top-Up Saldo',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
-                letterSpacing: 1.1,
-                color: canClick ? Colors.white : Colors.grey[600],
+                letterSpacing: 0.5,
+                color: canClick ? Colors.white : const Color(0xFF94A3B8),
               ),
             ),
           ],
@@ -1356,28 +1508,56 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     );
   }
 
+  // Right column active terminal console
   Widget _buildTerminalConsole() {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          _isCashierTab ? 'MESIN PEMOTONG SALDO' : 'MESIN PENGISI SALDO',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12, 
-            fontWeight: FontWeight.bold, 
-            color: _isCashierTab ? const Color(0xFF818CF8) : const Color(0xFF34D399),
-            letterSpacing: 2.0,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              _isCashierTab ? 'MESIN PEMOTONG SALDO' : 'MESIN PENGISI SALDO',
+              style: TextStyle(
+                fontSize: 11, 
+                fontWeight: FontWeight.bold, 
+                color: _isCashierTab ? const Color(0xFF8B5CF6) : const Color(0xFF10B981),
+                letterSpacing: 1.0,
+              ),
+            ),
+            if (kIsWeb)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Simulasi RFID', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    height: 20,
+                    width: 36,
+                    child: Switch(
+                      value: _showSimulator,
+                      onChanged: (val) {
+                        setState(() {
+                          _showSimulator = val;
+                        });
+                      },
+                      activeColor: const Color(0xFF3B82F6),
+                    ),
+                  )
+                ],
+              )
+          ],
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         Expanded(
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF0F1424),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: const Color(0xFF1E293B), width: 1.5),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+              boxShadow: const [
+                BoxShadow(color: Color(0x050F172A), blurRadius: 20, offset: Offset(0, 8)),
+              ],
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(28),
@@ -1408,12 +1588,12 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
             Icon(
               _isCashierTab ? Icons.point_of_sale_rounded : Icons.add_card_rounded, 
               size: 70, 
-              color: Colors.grey[850],
+              color: const Color(0xFFE2E8F0),
             ),
             const SizedBox(height: 20),
             Text(
               _isCashierTab ? 'Kasir Belanja Idle' : 'Top-Up Terminal Idle',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
             ),
             const SizedBox(height: 8),
             Text(
@@ -1421,7 +1601,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                   ? 'Ketik nominal belanja lalu tekan "Proses Pembayaran".' 
                   : 'Ketik nominal top-up lalu tekan "Proses Top-Up".',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
             ),
           ],
         );
@@ -1434,11 +1614,11 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
             const Spacer(),
             CircleAvatar(
               radius: 36,
-              backgroundColor: (_isCashierTab ? const Color(0xFF6366F1) : const Color(0xFF10B981)).withOpacity(0.15),
+              backgroundColor: (_isCashierTab ? const Color(0xFF3B82F6) : const Color(0xFF10B981)).withOpacity(0.1),
               child: Icon(
                 _isCashierTab ? Icons.nfc_rounded : Icons.contactless_rounded, 
                 size: 40, 
-                color: _isCashierTab ? const Color(0xFF818CF8) : const Color(0xFF34D399),
+                color: _isCashierTab ? const Color(0xFF3B82F6) : const Color(0xFF10B981),
               ),
             ),
             const SizedBox(height: 20),
@@ -1446,16 +1626,16 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               _currentStatus == TransactionStatus.processing 
                   ? 'Membaca data kartu...' 
                   : (_isCashierTab ? 'Siap Potong Saldo' : 'Siap Top-Up Saldo'),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
             ),
             const SizedBox(height: 6),
             Text(
               _statusMessage,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
             ),
             const Spacer(),
-            _buildInteractiveCardSimulator(),
+            if (_showSimulator) _buildInteractiveCardSimulator(),
           ],
         );
 
@@ -1469,21 +1649,21 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.12),
+                color: const Color(0xFFFFF1F2),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.error_outline_rounded, size: 40, color: Colors.redAccent),
+              child: const Icon(Icons.error_outline_rounded, size: 40, color: Color(0xFFF43F5E)),
             ),
             const SizedBox(height: 20),
             const Text(
               'Transaksi Gagal',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.redAccent),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFF43F5E)),
             ),
             const SizedBox(height: 6),
             Text(
               _statusMessage,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Colors.grey),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -1491,136 +1671,272 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               icon: const Icon(Icons.refresh_rounded, size: 14),
               label: const Text('Coba Lagi'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E293B),
-                foregroundColor: Colors.white,
+                backgroundColor: const Color(0xFFF1F5F9),
+                foregroundColor: const Color(0xFF0F172A),
+                elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
             ),
             const SizedBox(height: 6),
             TextButton(
               onPressed: _resetTransaction,
-              child: const Text('Batal & Reset', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              child: const Text('Batal & Reset', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
             ),
           ],
         );
     }
   }
 
+  // White thermal receipt design for Top-up Success
   Widget _buildTopUpHolographicReceipt() {
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.15),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.add_task_rounded, size: 44, color: Colors.greenAccent),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Top-Up Saldo Sukses!',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.greenAccent),
-          ),
-          const SizedBox(height: 16),
-          
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E293B).withOpacity(0.4),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF1E293B)),
-            ),
+    return _isPrinting
+        ? _buildPrintingSpinner()
+        : SingleChildScrollView(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildReceiptRow('Wisatawan', touristName ?? 'N/A', isBold: true),
-                const Divider(height: 20, thickness: 1, color: Colors.white10),
-                _buildReceiptRow('Jumlah Top-Up', _formatCurrency(_topUpAmount), isGreen: true),
-                const SizedBox(height: 8),
-                _buildReceiptRow('Nomor Chip UID', nfcUid ?? 'N/A'),
-                const SizedBox(height: 8),
-                _buildReceiptRow('Loket Pengisian', 'Loket Utama Zone A'),
-                const SizedBox(height: 8),
-                _buildReceiptRow('Saldo Akhir', loadedNewSaldo != null ? _formatCurrency(loadedNewSaldo!) : 'N/A', isBold: true),
+                // Thermal Receipt Voucher representation
+                Container(
+                  width: 280,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    boxShadow: const [BoxShadow(color: Color(0x0A0F172A), blurRadius: 12)],
+                  ),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 20),
+                      // Top header decoration
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF10B981), size: 18),
+                          SizedBox(width: 6),
+                          Text('E-WISATA CASHLESS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: 1.0)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text('Kuitansi Pengisian Saldo Resmi', style: TextStyle(fontSize: 9, color: Color(0xFF64748B))),
+                      const SizedBox(height: 14),
+                      
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Text('- - - - - - - - - - - - - - - - - - - - - -', style: TextStyle(color: Color(0xFFCBD5E1))),
+                      ),
+                      
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12),
+                        child: Column(
+                          children: [
+                            _buildReceiptRow('Wisatawan', touristName ?? 'N/A', isBold: true),
+                            const SizedBox(height: 6),
+                            _buildReceiptRow('Status Kartu', 'AKTIF / TERDAFTAR', isGreen: true),
+                            const SizedBox(height: 6),
+                            _buildReceiptRow('Nomor Chip UID', nfcUid ?? 'N/A'),
+                            const SizedBox(height: 6),
+                            _buildReceiptRow('Loket Pengisian', 'Loket Utama Zone A'),
+                            const Divider(height: 24, thickness: 1, color: Color(0xFFF1F5F9)),
+                            _buildReceiptRow('Jumlah Top-Up', _formatCurrency(_topUpAmount), isGreen: true, isBold: true),
+                            const SizedBox(height: 6),
+                            _buildReceiptRow('Saldo Akhir', loadedNewSaldo != null ? _formatCurrency(loadedNewSaldo!) : 'N/A', isBold: true),
+                          ],
+                        ),
+                      ),
+                      
+                      const Text('- - - - - - - - - - - - - - - - - - - - - -', style: TextStyle(color: Color(0xFFCBD5E1))),
+                      
+                      // QR Code simulation
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            Container(
+                              height: 64,
+                              width: 64,
+                              decoration: BoxDecoration(
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.qr_code_2_rounded, size: 48, color: Color(0xFF0F172A)),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text('SINKRONISASI CLOUD BERHASIL', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _simulatePrintReceipt,
+                      icon: const Icon(Icons.print_rounded, size: 14),
+                      label: const Text('Cetak Struk', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF1F5F9),
+                        foregroundColor: const Color(0xFF0F172A),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton(
+                      onPressed: _resetTransaction,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      ),
+                      child: const Text('Top-Up Baru', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    )
+                  ],
+                )
               ],
             ),
-          ),
-          
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: _resetTransaction,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-            child: const Text('Top-Up Baru', style: TextStyle(fontWeight: FontWeight.bold)),
-          )
-        ],
-      ),
-    );
+          );
   }
 
+  // White thermal receipt design for Cashier checkout
   Widget _buildHolographicReceipt() {
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.15),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.check_circle_rounded, size: 44, color: Colors.greenAccent),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Pembayaran Sukses!',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.greenAccent),
-          ),
-          const SizedBox(height: 16),
-          
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E293B).withOpacity(0.4),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF1E293B)),
-            ),
+    return _isPrinting
+        ? _buildPrintingSpinner()
+        : SingleChildScrollView(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildReceiptRow('Wisatawan', touristName ?? 'Wisatawan', isBold: true),
-                const Divider(height: 20, thickness: 1, color: Colors.white10),
-                _buildReceiptRow('Nominal Belanja', _formatCurrency(_cashierAmount), isBold: true),
-                const SizedBox(height: 8),
-                _buildReceiptRow('Tipe Pembayaran', 'RFID Cashless Token'),
-                const SizedBox(height: 8),
-                _buildReceiptRow('UID Kartu', nfcUid ?? 'N/A'),
-                const SizedBox(height: 8),
-                _buildReceiptRow('Loket Kasir', _merchantsList.firstWhere((m) => m['id'] == _selectedMerchantId, orElse: () => {'nama_warung': 'Loket Kasir'})['nama_warung']),
-                const SizedBox(height: 8),
-                _buildReceiptRow('Sisa Saldo', remainingSaldo != null ? _formatCurrency(remainingSaldo!) : 'N/A', isGreen: true),
+                // Thermal Receipt Voucher representation
+                Container(
+                  width: 280,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    boxShadow: const [BoxShadow(color: Color(0x0A0F172A), blurRadius: 12)],
+                  ),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 20),
+                      // Top header decoration
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: Color(0xFF3B82F6), size: 18),
+                          SizedBox(width: 6),
+                          Text('E-WISATA CASHLESS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: 1.0)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text('Nota Belanja Souvenir Resmi', style: TextStyle(fontSize: 9, color: Color(0xFF64748B))),
+                      const SizedBox(height: 14),
+                      
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Text('- - - - - - - - - - - - - - - - - - - - - -', style: TextStyle(color: Color(0xFFCBD5E1))),
+                      ),
+                      
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12),
+                        child: Column(
+                          children: [
+                            _buildReceiptRow('Wisatawan', touristName ?? 'Wisatawan', isBold: true),
+                            const SizedBox(height: 6),
+                            _buildReceiptRow('Tipe Pembayaran', 'RFID Token Souvenir'),
+                            const SizedBox(height: 6),
+                            _buildReceiptRow('UID Kartu', nfcUid ?? 'N/A'),
+                            const SizedBox(height: 6),
+                            _buildReceiptRow('Loket Kasir', _merchantsList.firstWhere((m) => m['id'] == _selectedMerchantId, orElse: () => {'nama_warung': 'Loket Kasir'})['nama_warung']),
+                            const Divider(height: 24, thickness: 1, color: Color(0xFFF1F5F9)),
+                            _buildReceiptRow('Nominal Belanja', _formatCurrency(_cashierAmount), isBold: true),
+                            const SizedBox(height: 6),
+                            _buildReceiptRow('Sisa Saldo', remainingSaldo != null ? _formatCurrency(remainingSaldo!) : 'N/A', isGreen: true, isBold: true),
+                          ],
+                        ),
+                      ),
+                      
+                      const Text('- - - - - - - - - - - - - - - - - - - - - -', style: TextStyle(color: Color(0xFFCBD5E1))),
+                      
+                      // QR Code simulation
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            Container(
+                              height: 64,
+                              width: 64,
+                              decoration: BoxDecoration(
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.qr_code_2_rounded, size: 48, color: Color(0xFF0F172A)),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text('TIKET WAHANA VALID', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF3B82F6))),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _simulatePrintReceipt,
+                      icon: const Icon(Icons.print_rounded, size: 14),
+                      label: const Text('Cetak Struk', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF1F5F9),
+                        foregroundColor: const Color(0xFF0F172A),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton(
+                      onPressed: _resetTransaction,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3B82F6),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      ),
+                      child: const Text('Transaksi Baru', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    )
+                  ],
+                )
               ],
             ),
-          ),
-          
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: _resetTransaction,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6366F1),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-            child: const Text('Transaksi Baru', style: TextStyle(fontWeight: FontWeight.bold)),
-          )
-        ],
-      ),
+          );
+  }
+
+  Widget _buildPrintingSpinner() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const CircularProgressIndicator(color: Color(0xFF3B82F6)),
+        const SizedBox(height: 16),
+        const Text(
+          'Mencetak Struk Kasir...',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Mengirim data ke Bluetooth Printer...',
+          style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+        ),
+      ],
     );
   }
 
@@ -1628,28 +1944,29 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[400])),
+        Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
         Text(
           value,
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+            fontSize: 11,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
             color: isGreen 
-                ? Colors.greenAccent 
-                : (isBold ? Colors.white : Colors.grey[200]),
+                ? const Color(0xFF10B981) 
+                : (isBold ? const Color(0xFF0F172A) : const Color(0xFF334155)),
           ),
         ),
       ],
     );
   }
 
+  // Card Simulator styled with rounded gradients
   Widget _buildInteractiveCardSimulator() {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B).withOpacity(0.6),
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF1E293B)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
         children: [
@@ -1681,10 +1998,10 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(14),
               boxShadow: [
                 BoxShadow(
-                  color: (_isCashierTab ? const Color(0xFFEC4899) : const Color(0xFF34D399)).withOpacity(0.2),
+                  color: (_isCashierTab ? const Color(0xFFEC4899) : const Color(0xFF34D399)).withOpacity(0.15),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 )
@@ -1736,7 +2053,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.amber,
               foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               elevation: 0,
             ),
@@ -1758,10 +2075,10 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                 children: [
                   const Text(
                     'REKAP KEUANGAN WARUNG',
-                    style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                    style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.bold, letterSpacing: 1.2),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.refresh_rounded, color: Colors.indigoAccent),
+                    icon: const Icon(Icons.refresh_rounded, color: Color(0xFF3B82F6)),
                     onPressed: _fetchDashboardData,
                     tooltip: 'Refresh Laporan',
                   )
@@ -1774,21 +2091,21 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF1E1E38), Color(0xFF13132B)],
+                    colors: [Color(0xFFEFF6FF), Color(0xFFDBEAFE)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF312E81).withOpacity(0.5)),
+                  border: Border.all(color: const Color(0xFFBFDBFE)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('PENDAPATAN WARUNG HARI INI', style: TextStyle(fontSize: 10, color: Colors.grey, letterSpacing: 1.0)),
+                    const Text('PENDAPATAN WARUNG HARI INI', style: TextStyle(fontSize: 10, color: Color(0xFF2563EB), fontWeight: FontWeight.bold, letterSpacing: 1.0)),
                     const SizedBox(height: 6),
                     Text(
                       _formatCurrency(_totalEarnings),
-                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF34D399)),
+                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF1E40AF)),
                     ),
                   ],
                 ),
@@ -1799,9 +2116,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF151C2C),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF1E293B)),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1809,14 +2126,14 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                     const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('TRANSAKSI BERHASIL', style: TextStyle(fontSize: 9, color: Colors.grey, letterSpacing: 1.0)),
+                        Text('TRANSAKSI BERHASIL', style: TextStyle(fontSize: 9, color: Color(0xFF64748B), letterSpacing: 1.0)),
                         SizedBox(height: 4),
-                        Text('Jumlah struk terbit', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        Text('Jumlah struk terbit', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
                       ],
                     ),
                     Text(
                       '$_totalTransactionsCount Kali',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                     ),
                   ],
                 ),
@@ -1827,7 +2144,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                 const SizedBox(height: 24),
                 const Text(
                   '10 TRANSAKSI TERAKHIR',
-                  style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                  style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.bold, letterSpacing: 1.2),
                 ),
                 const SizedBox(height: 8),
                 Expanded(child: _buildTransactionsListViewWidget()),
@@ -1847,7 +2164,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           style: TextStyle(
             fontSize: 12, 
             fontWeight: FontWeight.bold, 
-            color: Color(0xFF818CF8),
+            color: Color(0xFF3B82F6),
             letterSpacing: 2.0,
           ),
         ),
@@ -1856,9 +2173,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F1424),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFF1E293B), width: 1.5),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
             ),
             child: _buildTransactionsListViewWidget(),
           ),
@@ -1867,13 +2184,13 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     );
   }
 
-  // Reusable transactions list widget
+  // Reusable transactions list widget (Apple Outlined Style)
   Widget _buildTransactionsListViewWidget() {
     if (_recentTransactions.isEmpty) {
-      return Center(
+      return const Center(
         child: Text(
           'Belum ada transaksi hari ini.',
-          style: TextStyle(color: Colors.grey[600], fontSize: 13),
+          style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
         ),
       );
     }
@@ -1890,9 +2207,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B).withOpacity(0.3),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF1E293B).withOpacity(0.5)),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1901,23 +2218,23 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                 children: [
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: const Color(0xFF10B981).withOpacity(0.15),
-                    child: const Icon(Icons.arrow_downward_rounded, size: 18, color: Color(0xFF34D399)),
+                    backgroundColor: const Color(0xFFECFDF5),
+                    child: const Icon(Icons.arrow_downward_rounded, size: 18, color: Color(0xFF10B981)),
                   ),
                   const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
                       const SizedBox(height: 2),
-                      Text('Merchant Aktif • $time WIB', style: TextStyle(fontSize: 9, color: Colors.grey[500])),
+                      Text('Transaksi Berhasil • $time WIB', style: const TextStyle(fontSize: 9, color: Color(0xFF64748B))),
                     ],
                   ),
                 ],
               ),
               Text(
                 '+ ${_formatCurrency(nominal)}',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF34D399)),
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF10B981)),
               ),
             ],
           ),
@@ -1926,7 +2243,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     );
   }
 
-  // Central Manager Dashboard UI View
+  // Central Manager Dashboard UI View (Matches mockup 1 exactly)
   Widget _buildAdminOverviewView() {
     return _isLoadingAdminDashboard
         ? const Center(child: CircularProgressIndicator())
@@ -1941,11 +2258,11 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'MONITORING KEUANGAN PUSAT',
-                        style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                        'Ringkasan Keuangan',
+                        style: TextStyle(fontSize: 15, color: Color(0xFF0F172A), fontWeight: FontWeight.w900),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.refresh_rounded, color: Colors.indigoAccent),
+                        icon: const Icon(Icons.refresh_rounded, color: Color(0xFF3B82F6)),
                         onPressed: () {
                           _fetchMerchants();
                           _fetchAdminDashboardData();
@@ -1954,32 +2271,61 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                       )
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
 
-                  // Financial Summary Cards
+                  // Financial Summary Cards (Layout matches mockup 1)
                   LayoutBuilder(
                     builder: (context, constraints) {
                       final bool isWide = constraints.maxWidth > 700;
                       return isWide 
                           ? Row(
                               children: [
-                                Expanded(child: _buildOverviewCard('TOTAL UANG MASUK (TOP-UP)', _totalTopUpsSum, const Color(0xFF6366F1))),
+                                Expanded(child: _buildOverviewCard('Total Uang Masuk (Top-Up)', _totalTopUpsSum, const Color(0xFF3B82F6), Icons.trending_up_rounded)),
                                 const SizedBox(width: 12),
-                                Expanded(child: _buildOverviewCard('TOTAL BELANJA (REALISASI)', _totalSpendingsSum, const Color(0xFF10B981))),
-                                const SizedBox(width: 12),
-                                Expanded(child: _buildOverviewCard('SALDO BEREDAR (OUTSTANDING)', _totalTopUpsSum - _totalSpendingsSum, const Color(0xFFF59E0B))),
+                                Expanded(child: _buildOverviewCard('Total Belanja (Realisasi)', _totalSpendingsSum, const Color(0xFF10B981), Icons.shopping_bag_outlined)),
                               ],
                             )
                           : Column(
                               children: [
-                                _buildOverviewCard('TOTAL UANG MASUK (TOP-UP)', _totalTopUpsSum, const Color(0xFF6366F1)),
+                                _buildOverviewCard('Total Uang Masuk (Top-Up)', _totalTopUpsSum, const Color(0xFF3B82F6), Icons.trending_up_rounded),
                                 const SizedBox(height: 10),
-                                _buildOverviewCard('TOTAL BELANJA (REALISASI)', _totalSpendingsSum, const Color(0xFF10B981)),
-                                const SizedBox(height: 10),
-                                _buildOverviewCard('SALDO BEREDAR (OUTSTANDING)', _totalTopUpsSum - _totalSpendingsSum, const Color(0xFFF59E0B)),
+                                _buildOverviewCard('Total Belanja (Realisasi)', _totalSpendingsSum, const Color(0xFF10B981), Icons.shopping_bag_outlined),
                               ],
                             );
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Card 3: Saldo Beredar (Horizontal Layout card at the bottom of Grid)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      boxShadow: const [BoxShadow(color: Color(0x030F172A), blurRadius: 10)],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Saldo Beredar (Outstanding)', style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text(
+                              _formatCurrency(_totalTopUpsSum - _totalSpendingsSum),
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.orange),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: const Color(0xFFFFF7ED), shape: BoxShape.circle),
+                          child: const Icon(Icons.sync_alt_rounded, color: Colors.orange, size: 24),
+                        )
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 24),
 
@@ -1993,20 +2339,20 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                               children: [
                                 Expanded(
                                   flex: 5,
-                                  child: _buildDashboardSection('Peringkat Warung Terlaris', _buildBestSellingMerchantsList()),
+                                  child: _buildDashboardSection('Peringkat Merchant', _buildBestSellingMerchantsList()),
                                 ),
                                 const SizedBox(width: 20),
                                 Expanded(
                                   flex: 6,
-                                  child: _buildDashboardSection('Log Transaksi Tempat Wisata (Global)', _buildGlobalLiveTransactionsTable()),
+                                  child: _buildDashboardSection('Log Transaksi Global', _buildGlobalLiveTransactionsTable()),
                                 ),
                               ],
                             )
                           : Column(
                               children: [
-                                _buildDashboardSection('Peringkat Warung Terlaris', _buildBestSellingMerchantsList()),
+                                _buildDashboardSection('Peringkat Merchant', _buildBestSellingMerchantsList()),
                                 const SizedBox(height: 20),
-                                _buildDashboardSection('Log Transaksi Tempat Wisata (Global)', _buildGlobalLiveTransactionsTable()),
+                                _buildDashboardSection('Log Transaksi Global', _buildGlobalLiveTransactionsTable()),
                               ],
                             );
                     },
@@ -2017,33 +2363,49 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           );
   }
 
-  Widget _buildOverviewCard(String title, int amount, Color color) {
+  Widget _buildOverviewCard(String title, int amount, Color color, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF151C2C),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x030F172A), blurRadius: 10),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-          const SizedBox(height: 8),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              _formatCurrency(amount),
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: color,
-                shadows: [
-                  Shadow(color: color.withOpacity(0.2), blurRadius: 10),
-                ],
-              ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    _formatCurrency(amount),
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 24),
+          )
         ],
       ),
     );
@@ -2053,16 +2415,23 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF111726),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF1E293B)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [BoxShadow(color: Color(0x030F172A), blurRadius: 15)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title.toUpperCase(),
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF818CF8), letterSpacing: 1.2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+              ),
+              const Text('Lihat Semua >', style: TextStyle(fontSize: 10, color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+            ],
           ),
           const SizedBox(height: 16),
           content,
@@ -2073,10 +2442,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
 
   Widget _buildBestSellingMerchantsList() {
     if (_bestSellingMerchants.isEmpty) {
-      return const Center(child: Text('Belum ada data penjualan warung.', style: TextStyle(color: Colors.grey)));
+      return const Center(child: Text('Belum ada data penjualan.', style: TextStyle(color: Colors.grey)));
     }
     
-    // Find max revenue for proportion calculation
     int maxRevenue = 1;
     for (var m in _bestSellingMerchants) {
       int rev = m['total_omzet'] as int;
@@ -2094,20 +2462,24 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
         final double proportion = omzet / maxRevenue;
         
         return Container(
-          margin: const EdgeInsets.only(bottom: 14),
+          margin: const EdgeInsets.only(bottom: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    '#${index + 1} $name',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                  Expanded(
+                    child: Text(
+                      '#${index + 1} $name',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   Text(
                     _formatCurrency(omzet),
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF34D399)),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF3B82F6)),
                   ),
                 ],
               ),
@@ -2115,28 +2487,22 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               Stack(
                 children: [
                   Container(
-                    height: 8,
+                    height: 6,
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
-                      borderRadius: BorderRadius.circular(4),
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(3),
                     ),
                   ),
                   FractionallySizedBox(
                      widthFactor: proportion.clamp(0.001, 1.0),
                      child: Container(
-                       height: 8,
+                       height: 6,
                        decoration: BoxDecoration(
                          gradient: const LinearGradient(
-                           colors: [Color(0xFF6366F1), Color(0xFFEC4899)],
+                           colors: [Color(0xFF3B82F6), Color(0xFFEC4899)],
                          ),
-                         borderRadius: BorderRadius.circular(4),
-                         boxShadow: [
-                           BoxShadow(
-                             color: const Color(0xFF6366F1).withOpacity(0.4),
-                             blurRadius: 4,
-                           ),
-                         ],
+                         borderRadius: BorderRadius.circular(3),
                        ),
                      ),
                    ),
@@ -2157,7 +2523,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: _allTransactionsGlobal.length > 15 ? 15 : _allTransactionsGlobal.length,
+      itemCount: _allTransactionsGlobal.length > 5 ? 5 : _allTransactionsGlobal.length,
       itemBuilder: (context, index) {
         final tx = _allTransactionsGlobal[index];
         final String userName = tx['users'] != null ? tx['users']['nama'] : 'Wisatawan';
@@ -2166,29 +2532,38 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
         final String time = _formatTime(tx['created_at']);
         
         return Container(
-          margin: const EdgeInsets.only(bottom: 8),
+          margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B).withOpacity(0.2),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF1E293B).withOpacity(0.4)),
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(userName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
-                    const SizedBox(height: 2),
-                    Text('Membeli di: $merchantName • $time WIB', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
-                  ],
-                ),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: const Color(0xFFECFDF5),
+                    child: const Icon(Icons.arrow_downward_rounded, size: 16, color: Color(0xFF10B981)),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(userName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                      const SizedBox(height: 2),
+                      Text('Membeli di: $merchantName', style: const TextStyle(fontSize: 8, color: Color(0xFF64748B))),
+                      Text(time, style: const TextStyle(fontSize: 8, color: Color(0xFF94A3B8))),
+                    ],
+                  ),
+                ],
               ),
               Text(
                 _formatCurrency(nominal),
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF34D399)),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
               ),
             ],
           ),
@@ -2197,25 +2572,215 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     );
   }
 
+  // Global Transaction Reports Page (Matches mockup 4 exactly!)
   Widget _buildGlobalHistoryView() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Text(
-          'RIWAYAT SELURUH TRANSAKSI KASIR',
-          style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-        ),
-        const SizedBox(height: 14),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F1424),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF1E293B)),
+    final double averageVal = _allTransactionsGlobal.isNotEmpty ? _totalSpendingsSum / _allTransactionsGlobal.length : 0.0;
+    
+    return _isExporting
+        ? _buildExportSpinner()
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Filters row (mockup 4 header)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Laporan Global', style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        const Text('Semua Merchant', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF3B82F6))),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF3B82F6)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              
+              // Time selector pills
+              Row(
+                children: ['Hari Ini', 'Minggu Ini', 'Bulan Ini', 'Kustom'].map((text) {
+                  final bool isActive = _activeTimeFilter == text;
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _activeTimeFilter = text;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: isActive ? const Color(0xFF3B82F6) : Colors.white,
+                            border: Border.all(color: isActive ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0)),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                text,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: isActive ? Colors.white : const Color(0xFF64748B),
+                                ),
+                              ),
+                              if (text == 'Kustom') ...[
+                                const SizedBox(width: 4),
+                                Icon(Icons.calendar_today_rounded, size: 10, color: isActive ? Colors.white : const Color(0xFF64748B)),
+                              ]
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              
+              // Statistics Row
+              Row(
+                children: [
+                  Expanded(child: _buildMiniStatCard('Total Transaksi', '${_allTransactionsGlobal.length}')),
+                  const SizedBox(width: 8),
+                  Expanded(child: _buildMiniStatCard('Total Nilai', _formatCurrency(_totalSpendingsSum))),
+                  const SizedBox(width: 8),
+                  Expanded(child: _buildMiniStatCard('Rata-rata', _formatCurrency(averageVal.toInt()))),
+                ],
+              ),
+              const SizedBox(height: 16),
+              
+              // Global transaction table list
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: ListView.builder(
+                    itemCount: _allTransactionsGlobal.length,
+                    itemBuilder: (context, index) {
+                      final tx = _allTransactionsGlobal[index];
+                      final String userName = tx['users'] != null ? tx['users']['nama'] : 'Wisatawan';
+                      final String merchantName = tx['merchants'] != null ? tx['merchants']['nama_warung'] : 'Warung Umum';
+                      final int nominal = tx['nominal'] ?? 0;
+                      final String time = _formatTime(tx['created_at']);
+                      
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: const Color(0xFFECFDF5),
+                                  child: const Icon(Icons.arrow_downward_rounded, size: 16, color: Color(0xFF10B981)),
+                                ),
+                                const SizedBox(width: 12),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(userName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                                    const SizedBox(height: 2),
+                                    Text('$merchantName • $time WIB', style: const TextStyle(fontSize: 8, color: Color(0xFF64748B))),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            Text(
+                              '+ ${_formatCurrency(nominal)}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF10B981)),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // Export button
+              ElevatedButton.icon(
+                onPressed: _simulateExportReport,
+                icon: const Icon(Icons.download_rounded, size: 16),
+                label: const Text('Export Laporan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF3B82F6),
+                  elevation: 0,
+                  side: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              )
+            ],
+          );
+  }
+
+  Widget _buildMiniStatCard(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 9, color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
             ),
-            child: _buildGlobalLiveTransactionsTable(),
-          ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExportSpinner() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const CircularProgressIndicator(color: Color(0xFF3B82F6)),
+        const SizedBox(height: 16),
+        const Text(
+          'Mengekspor Laporan...',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Mengompilasi data transaksi ke Excel/PDF...',
+          style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
         ),
       ],
     );
@@ -2234,8 +2799,8 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           _fetchAdminDashboardData();
         }
       },
-      backgroundColor: const Color(0xFF080B13),
-      indicatorColor: const Color(0xFF6366F1).withOpacity(0.15),
+      backgroundColor: Colors.white,
+      indicatorColor: const Color(0xFF3B82F6).withOpacity(0.12),
       destinations: _isAdminMode
           ? const [
               NavigationDestination(icon: Icon(Icons.analytics_rounded), label: 'Overview'),
@@ -2255,9 +2820,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     return Container(
       height: 350,
       decoration: const BoxDecoration(
-        color: Color(0xFF0F1424),
+        color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border(top: BorderSide(color: Color(0xFF1E293B), width: 1.5)),
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 1.5)),
       ),
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -2295,9 +2860,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     final isEnabled = _currentStatus == TransactionStatus.waitingForInput;
     final isSpecial = key == 'C' || key == '⌫';
     
-    Color textColor = Colors.white;
+    Color textColor = const Color(0xFF0F172A);
     if (isSpecial) {
-      textColor = key == 'C' ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
+      textColor = key == 'C' ? const Color(0xFFEF4444) : const Color(0xFF3B82F6);
     }
     
     return Material(
@@ -2307,23 +2872,23 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
         borderRadius: BorderRadius.circular(16),
         child: Container(
           decoration: BoxDecoration(
-            color: isEnabled 
-                ? const Color(0xFF151C2C) 
-                : Colors.white.withOpacity(0.01),
+            color: isEnabled ? Colors.white : const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isEnabled ? const Color(0xFF1E293B) : Colors.transparent,
+              color: isEnabled ? const Color(0xFFE2E8F0) : Colors.transparent,
             ),
           ),
           alignment: Alignment.center,
-          child: Text(
-            key,
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: isEnabled ? textColor : Colors.grey[800],
-            ),
-          ),
+          child: key == '⌫'
+              ? Icon(Icons.backspace_outlined, color: isEnabled ? const Color(0xFF64748B) : Colors.grey[300], size: 20)
+              : Text(
+                  key,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isEnabled ? textColor : Colors.grey[300],
+                  ),
+                ),
         ),
       ),
     );
@@ -2335,7 +2900,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
       return const SizedBox.shrink();
     }
     
-    final color = _isCashierTab ? const Color(0xFF6366F1) : const Color(0xFF10B981);
+    final color = _isCashierTab ? const Color(0xFF3B82F6) : const Color(0xFF10B981);
     
     return AnimatedBuilder(
       animation: _pulseController,
