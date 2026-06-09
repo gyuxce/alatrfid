@@ -262,7 +262,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           : widget.mockEmail;
       _isAdminMode = email == 'admin@ewisata.com';
       
-      _showSimulator = kIsWeb && screenWidth >= 900; // Simulator only on desktop web
+      _showSimulator = kIsWeb; // Simulator available on web
       if (_isAdminMode) {
         _currentTab = 0;
         _fetchAdminDashboardData();
@@ -841,7 +841,31 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
       touristName = null;
     });
 
-    if (kIsWeb) return; 
+    if (kIsWeb) {
+      if (MediaQuery.of(context).size.width < 900 && _showSimulator) {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (ctx) => Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+              top: 24,
+              left: 24,
+              right: 24,
+            ),
+            child: SingleChildScrollView(
+              child: _buildTerminalConsole(),
+            ),
+          ),
+        );
+      }
+      return;
+    }
 
     bool isAvailable = await NfcManager.instance.isAvailable();
     if (!isAvailable) {
