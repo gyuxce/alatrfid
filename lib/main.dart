@@ -140,6 +140,57 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     }).toList();
   }
 
+  // POS System State (Phase 1)
+  final List<Map<String, dynamic>> _mockProducts = [
+    {'id': 1, 'name': 'Nasi Goreng Spesial', 'price': 25000, 'category': 'Makanan', 'icon': Icons.rice_bowl},
+    {'id': 2, 'name': 'Es Kelapa Muda', 'price': 15000, 'category': 'Minuman', 'icon': Icons.local_drink},
+    {'id': 3, 'name': 'Sate Ayam Madura', 'price': 30000, 'category': 'Makanan', 'icon': Icons.kebab_dining},
+    {'id': 4, 'name': 'Kopi Hitam', 'price': 10000, 'category': 'Minuman', 'icon': Icons.coffee},
+    {'id': 5, 'name': 'Tiket Bianglala', 'price': 35000, 'category': 'Wahana', 'icon': Icons.attractions},
+    {'id': 6, 'name': 'Gantungan Kunci', 'price': 15000, 'category': 'Souvenir', 'icon': Icons.vpn_key},
+    {'id': 7, 'name': 'Es Teh Manis', 'price': 5000, 'category': 'Minuman', 'icon': Icons.emoji_food_beverage},
+    {'id': 8, 'name': 'Mie Pedas', 'price': 20000, 'category': 'Makanan', 'icon': Icons.ramen_dining},
+  ];
+
+  Map<int, int> _cartItems = {}; // product_id -> quantity
+  String _posCategoryFilter = 'Semua';
+
+  void _addToCart(int productId) {
+    if (_currentStatus != TransactionStatus.waitingForInput) return;
+    setState(() {
+      _cartItems[productId] = (_cartItems[productId] ?? 0) + 1;
+      _updateCartTotal();
+    });
+  }
+
+  void _removeFromCart(int productId) {
+    if (_currentStatus != TransactionStatus.waitingForInput) return;
+    setState(() {
+      if ((_cartItems[productId] ?? 0) > 1) {
+        _cartItems[productId] = _cartItems[productId]! - 1;
+      } else {
+        _cartItems.remove(productId);
+      }
+      _updateCartTotal();
+    });
+  }
+
+  void _updateCartTotal() {
+    int sum = 0;
+    _cartItems.forEach((id, qty) {
+      final product = _mockProducts.firstWhere((p) => p['id'] == id);
+      sum += (product['price'] as int) * qty;
+    });
+    _cashierAmount = sum;
+  }
+
+  void _clearCart() {
+    setState(() {
+      _cartItems.clear();
+      _updateCartTotal();
+    });
+  }
+
   // Animation controller for pulsing card reader concentric rings
   late AnimationController _pulseController;
 
@@ -506,7 +557,8 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
       touristName = null;
       _currentStatus = TransactionStatus.waitingForInput;
       if (_isCashierTab) {
-        _statusMessage = 'Masukkan nominal belanja dan pilih Proses Pembayaran.';
+        _statusMessage = 'Pilih menu pesanan dan tap Bayar via RFID.';
+        _clearCart();
       } else {
         _statusMessage = 'Masukkan nominal top-up dan ketuk Proses Top-Up.';
       }
@@ -1092,22 +1144,31 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                       // Active dropdown for merchants in cashier mode
                       _buildMerchantSelector(),
                       
-                      _isHistoryTab || _isOverviewTab 
-                          ? const SizedBox.shrink() 
-                          : _buildLEDAmountDisplay(),
-                      const SizedBox(height: 14),
-                      
-                      _isHistoryTab || _isOverviewTab 
-                          ? const SizedBox.shrink() 
-                          : _buildQuickAmountSelector(),
-                      const SizedBox(height: 16),
+                      if (_isHistoryTab || _isOverviewTab || _isCashierTab) 
+                          const SizedBox.shrink() 
+                      else ...[
+                          _buildLEDAmountDisplay(),
+                          const SizedBox(height: 14),
+                          _buildQuickAmountSelector(),
+                          const SizedBox(height: 16),
+                      ],
                       
                       Expanded(
                         child: _isOverviewTab
                             ? _buildAdminOverviewView()
                             : (_isHistoryTab 
                                 ? (_isAdminMode ? _buildGlobalHistoryView() : _buildDashboardView()) 
-                                : _buildDigitalKeypad()),
+                                : (_isCashierTab 
+                                    ? (isDesktop 
+                                        ? _buildProductGrid() 
+                                        : Column(
+                                            children: [
+                                              Expanded(flex: 3, child: _buildProductGrid()),
+                                              const Divider(height: 1),
+                                              Expanded(flex: 2, child: _buildCartSidebar()),
+                                            ],
+                                          ))
+                                    : _buildDigitalKeypad())),
                       ),
                     ],
                   ),
@@ -1130,7 +1191,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                 child: SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.all(32.0),
-                    child: _buildTerminalConsole(),
+                    child: (_isCashierTab && _currentStatus == TransactionStatus.waitingForInput)
+                        ? _buildCartSidebar()
+                        : _buildTerminalConsole(),
                   ),
                 ),
               ),
@@ -1635,6 +1698,221 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           ],
         ),
       ),
+    );
+  }
+
+  // POS: Product Grid View
+  Widget _buildProductGrid() {
+    final filteredProducts = _posCategoryFilter == 'Semua' 
+        ? _mockProducts 
+        : _mockProducts.where((p) => p['category'] == _posCategoryFilter).toList();
+
+    return Column(
+      children: [
+        // Category filters
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: ['Semua', 'Makanan', 'Minuman', 'Wahana', 'Souvenir'].map((cat) {
+              final bool isActive = _posCategoryFilter == cat;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0, bottom: 16.0),
+                child: InkWell(
+                  onTap: () => setState(() => _posCategoryFilter = cat),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isActive ? const Color(0xFF3B82F6) : Colors.white,
+                      border: Border.all(color: isActive ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      cat,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isActive ? Colors.white : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        
+        // Product Grid
+        Expanded(
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              childAspectRatio: 0.85,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+            ),
+            itemCount: filteredProducts.length,
+            itemBuilder: (context, index) {
+              final product = filteredProducts[index];
+              final int qty = _cartItems[product['id']] ?? 0;
+              
+              return InkWell(
+                onTap: () => _addToCart(product['id']),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: qty > 0 ? const Color(0xFF3B82F6) : const Color(0xFFE2E8F0), width: qty > 0 ? 2 : 1),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4)),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+                              ),
+                              child: Icon(product['icon'], size: 48, color: const Color(0xFF94A3B8)),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(product['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                const SizedBox(height: 4),
+                                Text(_formatCurrency(product['price']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF3B82F6))),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (qty > 0)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(color: Color(0xFF3B82F6), shape: BoxShape.circle),
+                            child: Text('$qty', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // POS: Cart Sidebar
+  Widget _buildCartSidebar() {
+    int totalItems = 0;
+    _cartItems.forEach((_, qty) => totalItems += qty);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Keranjang Belanja', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+            if (_cartItems.isNotEmpty)
+              TextButton(
+                onPressed: _clearCart,
+                child: const Text('Kosongkan', style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+              )
+          ],
+        ),
+        const Divider(),
+        Expanded(
+          child: _cartItems.isEmpty
+              ? const Center(child: Text('Belum ada pesanan', style: TextStyle(color: Color(0xFF94A3B8))))
+              : ListView.builder(
+                  itemCount: _cartItems.length,
+                  itemBuilder: (context, index) {
+                    final int productId = _cartItems.keys.elementAt(index);
+                    final int qty = _cartItems[productId]!;
+                    final product = _mockProducts.firstWhere((p) => p['id'] == productId);
+                    
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(product['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                Text('${_formatCurrency(product['price'])} x $qty', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                          Text(_formatCurrency((product['price'] as int) * qty), style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 8),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, color: Color(0xFF94A3B8), size: 20),
+                                onPressed: () => _removeFromCart(productId),
+                                constraints: const BoxConstraints(),
+                                padding: EdgeInsets.zero,
+                              ),
+                              const SizedBox(width: 4),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle_outline, color: Color(0xFF3B82F6), size: 20),
+                                onPressed: () => _addToCart(productId),
+                                constraints: const BoxConstraints(),
+                                padding: EdgeInsets.zero,
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+        const Divider(),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Total Bayar', style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
+              Text(_formatCurrency(_cashierAmount), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+            ],
+          ),
+        ),
+        ElevatedButton(
+          onPressed: _cashierAmount > 0 ? _startPaymentProcess : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF3B82F6),
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            disabledBackgroundColor: const Color(0xFFCBD5E1),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.nfc_rounded, size: 20, color: Colors.white),
+              const SizedBox(width: 8),
+              Text('Bayar via RFID', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
