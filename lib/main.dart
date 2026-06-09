@@ -48,13 +48,12 @@ class CashierApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFF8FAFC), // Apple Soft Grey Canvas
-        fontFamily: '.SF Pro Text', // Native Apple look-alike fallback
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        fontFamily: 'Segoe UI, Roboto, Helvetica Neue, sans-serif',
         colorScheme: const ColorScheme.light(
-          primary: Color(0xFF3B82F6), // iOS Blue
-          secondary: Color(0xFF10B981), // Gojek Emerald Green
+          primary: Color(0xFF3B82F6),
+          secondary: Color(0xFF10B981),
           surface: Colors.white,
-          background: const Color(0xFFF8FAFC),
         ),
       ),
       home: CashierHomePage(isSupabaseConfigured: isSupabaseConfigured),
@@ -84,7 +83,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
   bool _isAdminMode = false;
   bool _isInitialized = false;
   int _currentTab = 0; // Index mapping adapts depending on _isAdminMode
-  bool _showSimulator = kIsWeb; // Toggle simulator panel visibility on web
+  bool _showSimulator = false; // Initialized in didChangeDependencies based on screen size
   bool _isPrinting = false; // Simulation of Bluetooth printer loading state
   bool _isExporting = false; // Simulation of Excel/PDF export loading state
   String _activeTimeFilter = 'Hari Ini'; // Stats tab filter option
@@ -149,13 +148,13 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     super.didChangeDependencies();
     if (!_isInitialized) {
       final double screenWidth = MediaQuery.of(context).size.width;
-      // Default to admin mode on desktop, cashier mode on mobile
       _isAdminMode = screenWidth >= 900;
+      _showSimulator = kIsWeb && screenWidth >= 900; // Simulator only on desktop web
       if (_isAdminMode) {
-        _currentTab = 0; // Overview
+        _currentTab = 0;
         _fetchAdminDashboardData();
       } else {
-        _currentTab = 0; // Cashier
+        _currentTab = 0;
       }
       _isInitialized = true;
     }
@@ -436,10 +435,6 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
         } else {
           activeAmount = 0;
         }
-      } else if (value == '00') {
-        if (activeAmount > 0 && activeAmount < 10000000) {
-          activeAmount = activeAmount * 100;
-        }
       } else {
         String currentStr = activeAmount == 0 ? '' : activeAmount.toString();
         if (currentStr.length < 9) {
@@ -462,8 +457,8 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
   }
 
   void _addQuickAmount(int amount) {
-    if (_currentStatus != TransactionStatus.waitingForInput && 
-        _currentStatus == TransactionStatus.processing) {
+    if (_currentStatus == TransactionStatus.processing || 
+        _currentStatus == TransactionStatus.waitingForCard) {
       return;
     }
     
@@ -513,7 +508,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
       }
     });
     _fetchDashboardData();
-    _fetchAdminDashboardData();
+    if (_isAdminMode) _fetchAdminDashboardData();
   }
 
   // Deduct balance logic (Tab 0)
@@ -829,7 +824,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                     borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 2),
                   ),
                   counterText: '',
-                  hintText: 'PIN (Default: 2026)',
+                  hintText: 'Masukkan PIN',
                 ),
                 style: const TextStyle(color: Color(0xFF0F172A), fontSize: 20, letterSpacing: 8, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
@@ -1308,9 +1303,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                 ),
                 const SizedBox(height: 2),
-                const Text(
-                  'Pantai Kuta, Bali (Merchant Resmi)',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                Text(
+                  'Merchant Resmi • ${activeMerchant['nama_pemilik'] ?? 'Kasir'}',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                 ),
               ],
             ),
@@ -2153,36 +2148,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
           );
   }
 
-  // Right column Dashboard Transactions List (Desktop only)
-  Widget _buildDashboardRecentTransactionsList() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Text(
-          '10 TRANSAKSI TERAKHIR (REAL-TIME)',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12, 
-            fontWeight: FontWeight.bold, 
-            color: Color(0xFF3B82F6),
-            letterSpacing: 2.0,
-          ),
-        ),
-        const SizedBox(height: 20),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-            ),
-            child: _buildTransactionsListViewWidget(),
-          ),
-        ),
-      ],
-    );
-  }
+
 
   // Reusable transactions list widget (Apple Outlined Style)
   Widget _buildTransactionsListViewWidget() {
@@ -2430,7 +2396,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                 title,
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
               ),
-              const Text('Lihat Semua >', style: TextStyle(fontSize: 10, color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+              const SizedBox.shrink(),
             ],
           ),
           const SizedBox(height: 16),
@@ -2586,20 +2552,13 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Laporan Global', style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        const Text('Semua Merchant', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF3B82F6))),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF3B82F6)),
-                      ],
-                    ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, color: Color(0xFF3B82F6), size: 18),
+                    onPressed: () {
+                      _fetchMerchants();
+                      _fetchAdminDashboardData();
+                    },
+                    tooltip: 'Refresh data',
                   ),
                 ],
               ),

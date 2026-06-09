@@ -12,7 +12,6 @@ dependencies:
     sdk: flutter
 
   supabase_flutter: ^2.6.0
-  intl: ^0.19.0
   nfc_manager: ^3.3.0
 
 dev_dependencies:
