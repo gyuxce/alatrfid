@@ -256,7 +256,12 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     super.didChangeDependencies();
     if (!_isInitialized) {
       final double screenWidth = MediaQuery.of(context).size.width;
-      _isAdminMode = screenWidth >= 900;
+      
+      final email = widget.isSupabaseConfigured 
+          ? Supabase.instance.client.auth.currentUser?.email 
+          : widget.mockEmail;
+      _isAdminMode = email == 'admin@ewisata.com';
+      
       _showSimulator = kIsWeb && screenWidth >= 900; // Simulator only on desktop web
       if (_isAdminMode) {
         _currentTab = 0;
