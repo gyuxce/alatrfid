@@ -1899,7 +1899,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     ElevatedButton.icon(
-                      onPressed: () => _generatePdfReceipt(isCashier: true),
+                      onPressed: _generatePdfReceipt,
                       icon: const Icon(Icons.print_rounded, size: 14),
                       label: const Text('Cetak Struk', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
@@ -2016,7 +2016,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     ElevatedButton.icon(
-                      onPressed: () => _generatePdfReceipt(isCashier: false),
+                      onPressed: _generatePdfReceipt,
                       icon: const Icon(Icons.print_rounded, size: 14),
                       label: const Text('Cetak Struk', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
