@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nfc_manager/nfc_manager.dart';
-import 'dart:js' as js; // Used for cashier synth beep sound on Web
+import 'audio_stub.dart' if (dart.library.js) 'audio_web.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 // ==========================================
 // CONFIGURATION: SETUP YOUR SUPABASE DETAILS
@@ -169,27 +172,10 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     super.dispose();
   }
 
-  // Play a POS scanner beep sound (evaluates custom JS Web Audio API on Web, click haptic on mobile)
+  // Play a POS scanner beep sound
   void _playBeepSound() {
     if (kIsWeb) {
-      try {
-        js.context.callMethod('eval', [
-          """
-          var ctx = new (window.AudioContext || window.webkitAudioContext)();
-          var osc = ctx.createOscillator();
-          var gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(880, ctx.currentTime); // High pitch POS scanner bip
-          gain.gain.setValueAtTime(0.08, ctx.currentTime);
-          osc.start(ctx.currentTime);
-          osc.stop(ctx.currentTime + 0.12); // Short beep 120ms
-          """
-        ]);
-      } catch (e) {
-        debugPrint('Web Audio API error: $e');
-      }
+      playWebBeepSound();
     } else {
       HapticFeedback.heavyImpact();
     }
@@ -880,50 +866,194 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
     );
   }
 
-  // Simulate Bluetooth ticket printer
-  Future<void> _simulatePrintReceipt() async {
+  // Generate real PDF receipt and open print/save dialog
+  Future<void> _generatePdfReceipt() async {
     if (_isPrinting) return;
-    setState(() {
-      _isPrinting = true;
-    });
-    await Future.delayed(const Duration(milliseconds: 1500));
-    setState(() {
-      _isPrinting = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.print_rounded, color: Colors.white),
-            SizedBox(width: 8),
-            Text('Struk Kasir Berhasil Dicetak via Bluetooth Printer!'),
-          ],
-        ),
-        backgroundColor: Color(0xFF10B981),
+    setState(() { _isPrinting = true; });
+
+    final String merchantName = _merchantsList.firstWhere(
+      (m) => m['id'] == _selectedMerchantId,
+      orElse: () => {'nama_warung': 'Kasir'},
+    )['nama_warung'] ?? 'Kasir';
+    final String dateStr = DateTime.now().toString().substring(0, 16);
+    final bool isCashier = _isCashierTab;
+
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context context) {
+          return pw.Center(
+            child: pw.Container(
+              width: 260,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Text('E-WISATA CASHLESS', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    isCashier ? 'Nota Belanja Souvenir Resmi' : 'Kuitansi Pengisian Saldo Resmi',
+                    style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+                  ),
+                  pw.SizedBox(height: 12),
+                  pw.Divider(thickness: 0.8, color: PdfColors.grey400),
+                  pw.SizedBox(height: 10),
+                  _pdfRow('Wisatawan', touristName ?? 'N/A'),
+                  _pdfRow('UID Kartu', nfcUid ?? 'N/A'),
+                  _pdfRow('Loket Kasir', merchantName),
+                  _pdfRow('Waktu', dateStr),
+                  pw.SizedBox(height: 8),
+                  pw.Divider(thickness: 0.5, color: PdfColors.grey300),
+                  pw.SizedBox(height: 8),
+                  if (isCashier) ...[
+                    _pdfRow('Nominal Belanja', _formatCurrency(_cashierAmount), bold: true),
+                    _pdfRow('Sisa Saldo', remainingSaldo != null ? _formatCurrency(remainingSaldo!) : 'N/A', bold: true),
+                  ] else ...[
+                    _pdfRow('Jumlah Top-Up', _formatCurrency(_topUpAmount), bold: true),
+                    _pdfRow('Saldo Akhir', loadedNewSaldo != null ? _formatCurrency(loadedNewSaldo!) : 'N/A', bold: true),
+                  ],
+                  pw.SizedBox(height: 8),
+                  pw.Divider(thickness: 0.8, color: PdfColors.grey400),
+                  pw.SizedBox(height: 16),
+                  pw.BarcodeWidget(
+                    data: 'EWISATA-${nfcUid ?? "0000"}-$dateStr',
+                    barcode: pw.Barcode.qrCode(),
+                    width: 80,
+                    height: 80,
+                  ),
+                  pw.SizedBox(height: 6),
+                  pw.Text(
+                    isCashier ? 'TIKET WAHANA VALID' : 'SINKRONISASI CLOUD BERHASIL',
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800),
+                  ),
+                  pw.SizedBox(height: 16),
+                  pw.Text('Terima kasih telah berkunjung!', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey500)),
+                  pw.Text('E-Wisata Cashless System', style: pw.TextStyle(fontSize: 7, color: PdfColors.grey400)),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    setState(() { _isPrinting = false; });
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'Struk_EWisata_${DateTime.now().millisecondsSinceEpoch}',
+    );
+  }
+
+  // Generate real PDF transaction report
+  Future<void> _generatePdfReport() async {
+    if (_isExporting) return;
+    setState(() { _isExporting = true; });
+
+    final pdf = pw.Document();
+    final String dateStr = DateTime.now().toString().substring(0, 16);
+    final double avgVal = _allTransactionsGlobal.isNotEmpty
+        ? _totalSpendingsSum / _allTransactionsGlobal.length
+        : 0.0;
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        header: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('E-WISATA CASHLESS', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Laporan Transaksi', style: pw.TextStyle(fontSize: 12, color: PdfColors.grey600)),
+                ],
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text('Dicetak: $dateStr', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey500)),
+              pw.Divider(thickness: 1),
+              pw.SizedBox(height: 8),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  _pdfStatBox('Total Transaksi', '${_allTransactionsGlobal.length}'),
+                  _pdfStatBox('Total Nilai', _formatCurrency(_totalSpendingsSum)),
+                  _pdfStatBox('Rata-rata', _formatCurrency(avgVal.toInt())),
+                ],
+              ),
+              pw.SizedBox(height: 12),
+            ],
+          );
+        },
+        build: (pw.Context context) => [
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
+            cellStyle: const pw.TextStyle(fontSize: 8),
+            cellHeight: 28,
+            cellAlignments: {
+              0: pw.Alignment.center,
+              1: pw.Alignment.centerLeft,
+              2: pw.Alignment.centerLeft,
+              3: pw.Alignment.centerRight,
+              4: pw.Alignment.center,
+            },
+            headers: ['No', 'Wisatawan', 'Merchant', 'Nominal', 'Waktu'],
+            data: _allTransactionsGlobal.asMap().entries.map((entry) {
+              final tx = entry.value;
+              return [
+                '${entry.key + 1}',
+                tx['users'] != null ? tx['users']['nama'] ?? 'Wisatawan' : 'Wisatawan',
+                tx['merchants'] != null ? tx['merchants']['nama_warung'] ?? 'Warung' : 'Warung',
+                _formatCurrency((tx['nominal'] as num?)?.toInt() ?? 0),
+                _formatTime(tx['created_at'] ?? ''),
+              ];
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+
+    setState(() { _isExporting = false; });
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'Laporan_EWisata_${DateTime.now().millisecondsSinceEpoch}',
+    );
+  }
+
+  // PDF helper: row with label-value pair
+  pw.Widget _pdfRow(String label, String value, {bool bold = false}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 3),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(label, style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+          pw.Text(value, style: pw.TextStyle(fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+        ],
       ),
     );
   }
 
-  // Simulate Excel/PDF export
-  Future<void> _simulateExportReport() async {
-    if (_isExporting) return;
-    setState(() {
-      _isExporting = true;
-    });
-    await Future.delayed(const Duration(milliseconds: 1500));
-    setState(() {
-      _isExporting = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.check_circle_outline, color: Colors.white),
-            SizedBox(width: 8),
-            Text('Laporan Berhasil Diekspor ke Excel/PDF!'),
-          ],
-        ),
-        backgroundColor: Color(0xFF3B82F6),
+  // PDF helper: stat box for report header
+  pw.Widget _pdfStatBox(String label, String value) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(8),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300),
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
+      child: pw.Column(
+        children: [
+          pw.Text(label, style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+          pw.SizedBox(height: 4),
+          pw.Text(value, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+        ],
       ),
     );
   }
@@ -1769,7 +1899,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     ElevatedButton.icon(
-                      onPressed: _simulatePrintReceipt,
+                      onPressed: () => _generatePdfReceipt(isCashier: true),
                       icon: const Icon(Icons.print_rounded, size: 14),
                       label: const Text('Cetak Struk', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
@@ -1886,7 +2016,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     ElevatedButton.icon(
-                      onPressed: _simulatePrintReceipt,
+                      onPressed: () => _generatePdfReceipt(isCashier: false),
                       icon: const Icon(Icons.print_rounded, size: 14),
                       label: const Text('Cetak Struk', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
@@ -2685,7 +2815,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               
               // Export button
               ElevatedButton.icon(
-                onPressed: _simulateExportReport,
+                onPressed: _generatePdfReport,
                 icon: const Icon(Icons.download_rounded, size: 16),
                 label: const Text('Export Laporan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(

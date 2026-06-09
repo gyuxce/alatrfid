@@ -13,6 +13,8 @@ dependencies:
 
   supabase_flutter: ^2.6.0
   nfc_manager: ^3.3.0
+  pdf: ^3.11.1
+  printing: ^5.13.3
 
 dev_dependencies:
   flutter_test:
