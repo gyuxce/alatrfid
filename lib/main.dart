@@ -122,6 +122,24 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
   List<Map<String, dynamic>> _bestSellingMerchants = [];
   List<Map<String, dynamic>> _allTransactionsGlobal = [];
 
+  // Filtered transactions based on _activeTimeFilter
+  List<Map<String, dynamic>> get _filteredTransactions {
+    final now = DateTime.now();
+    return _allTransactionsGlobal.where((tx) {
+      if (tx['created_at'] == null) return false;
+      final txDate = DateTime.tryParse(tx['created_at'])?.toLocal() ?? now;
+      if (_activeTimeFilter == 'Hari Ini') {
+        return txDate.year == now.year && txDate.month == now.month && txDate.day == now.day;
+      } else if (_activeTimeFilter == 'Minggu Ini') {
+        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+        return txDate.isAfter(startOfWeek.subtract(const Duration(days: 1)));
+      } else if (_activeTimeFilter == 'Bulan Ini') {
+        return txDate.year == now.year && txDate.month == now.month;
+      }
+      return true; // Kustom shows all for now
+    }).toList();
+  }
+
   // Animation controller for pulsing card reader concentric rings
   late AnimationController _pulseController;
 
@@ -882,13 +900,10 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
 
     pdf.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(40),
+        pageFormat: PdfPageFormat.roll80,
+        margin: const pw.EdgeInsets.all(12),
         build: (pw.Context context) {
-          return pw.Center(
-            child: pw.Container(
-              width: 260,
-              child: pw.Column(
+          return pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
                   pw.Text('E-WISATA CASHLESS', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
@@ -917,24 +932,10 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                   pw.SizedBox(height: 8),
                   pw.Divider(thickness: 0.8, color: PdfColors.grey400),
                   pw.SizedBox(height: 16),
-                  pw.BarcodeWidget(
-                    data: 'EWISATA-${nfcUid ?? "0000"}-$dateStr',
-                    barcode: pw.Barcode.qrCode(),
-                    width: 80,
-                    height: 80,
-                  ),
-                  pw.SizedBox(height: 6),
-                  pw.Text(
-                    isCashier ? 'TIKET WAHANA VALID' : 'SINKRONISASI CLOUD BERHASIL',
-                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800),
-                  ),
-                  pw.SizedBox(height: 16),
                   pw.Text('Terima kasih telah berkunjung!', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey500)),
                   pw.Text('E-Wisata Cashless System', style: pw.TextStyle(fontSize: 7, color: PdfColors.grey400)),
                 ],
-              ),
-            ),
-          );
+              );
         },
       ),
     );
@@ -954,9 +955,13 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
 
     final pdf = pw.Document();
     final String dateStr = DateTime.now().toString().substring(0, 16);
-    final double avgVal = _allTransactionsGlobal.isNotEmpty
-        ? _totalSpendingsSum / _allTransactionsGlobal.length
-        : 0.0;
+    
+    final filteredTxs = _filteredTransactions;
+    int sumFiltered = 0;
+    for (var tx in filteredTxs) {
+      sumFiltered += (tx['nominal'] as num?)?.toInt() ?? 0;
+    }
+    final double avgVal = filteredTxs.isNotEmpty ? sumFiltered / filteredTxs.length : 0.0;
 
     pdf.addPage(
       pw.MultiPage(
@@ -980,8 +985,8 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  _pdfStatBox('Total Transaksi', '${_allTransactionsGlobal.length}'),
-                  _pdfStatBox('Total Nilai', _formatCurrency(_totalSpendingsSum)),
+                  _pdfStatBox('Total Transaksi', '${filteredTxs.length}'),
+                  _pdfStatBox('Total Nilai', _formatCurrency(sumFiltered)),
                   _pdfStatBox('Rata-rata', _formatCurrency(avgVal.toInt())),
                 ],
               ),
@@ -1003,7 +1008,7 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               4: pw.Alignment.center,
             },
             headers: ['No', 'Wisatawan', 'Merchant', 'Nominal', 'Waktu'],
-            data: _allTransactionsGlobal.asMap().entries.map((entry) {
+            data: filteredTxs.asMap().entries.map((entry) {
               final tx = entry.value;
               return [
                 '${entry.key + 1}',
@@ -2670,7 +2675,12 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
 
   // Global Transaction Reports Page (Matches mockup 4 exactly!)
   Widget _buildGlobalHistoryView() {
-    final double averageVal = _allTransactionsGlobal.isNotEmpty ? _totalSpendingsSum / _allTransactionsGlobal.length : 0.0;
+    final filteredTxs = _filteredTransactions;
+    int sumFiltered = 0;
+    for (var tx in filteredTxs) {
+      sumFiltered += (tx['nominal'] as num?)?.toInt() ?? 0;
+    }
+    final double averageVal = filteredTxs.isNotEmpty ? sumFiltered / filteredTxs.length : 0.0;
     
     return _isExporting
         ? _buildExportSpinner()
@@ -2744,9 +2754,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
               // Statistics Row
               Row(
                 children: [
-                  Expanded(child: _buildMiniStatCard('Total Transaksi', '${_allTransactionsGlobal.length}')),
+                  Expanded(child: _buildMiniStatCard('Total Transaksi', '${filteredTxs.length}')),
                   const SizedBox(width: 8),
-                  Expanded(child: _buildMiniStatCard('Total Nilai', _formatCurrency(_totalSpendingsSum))),
+                  Expanded(child: _buildMiniStatCard('Total Nilai', _formatCurrency(sumFiltered))),
                   const SizedBox(width: 8),
                   Expanded(child: _buildMiniStatCard('Rata-rata', _formatCurrency(averageVal.toInt()))),
                 ],
@@ -2763,9 +2773,9 @@ class _CashierHomePageState extends State<CashierHomePage> with TickerProviderSt
                     border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: ListView.builder(
-                    itemCount: _allTransactionsGlobal.length,
+                    itemCount: filteredTxs.length,
                     itemBuilder: (context, index) {
-                      final tx = _allTransactionsGlobal[index];
+                      final tx = filteredTxs[index];
                       final String userName = tx['users'] != null ? tx['users']['nama'] : 'Wisatawan';
                       final String merchantName = tx['merchants'] != null ? tx['merchants']['nama_warung'] : 'Warung Umum';
                       final int nominal = tx['nominal'] ?? 0;
